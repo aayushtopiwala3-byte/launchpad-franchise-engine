@@ -49,7 +49,7 @@ The tests worth reading first:
 | File | What it pins down |
 | --- | --- |
 | `tests/acceptance/switches.test.ts` | No switch, preset or individual flag changes a status, reason code, score, rank, territory or pin |
-| `tests/engine/determinism.test.ts` | Same input → same `resultHash`; row order is irrelevant |
+| `tests/engine/determinism.test.ts` | Same file in the same order → same `resultHash`, over 20 runs. Across 50 row-order shuffles every status, score, rank and pin is identical — the hash itself does move, because it digests the applicant array in the order it arrived |
 | `tests/engine/allocate.test.ts` | One store per pin, counting the 9 existing stores, across 50 randomised row-order shuffles |
 | `tests/seed/expectations.test.ts` | The full locked decision matrix, cell for cell, plus the 22 cases of §11.3 |
 | `tests/chat/scenarios.test.ts` | The §12 chat scenarios end to end, with AI disabled |
@@ -228,12 +228,18 @@ synchronous read. The build and typecheck are clean. This is a known, reasoned s
 rather than an oversight, but it is not tidy.
 
 **5 · The AI's influence on scores is real, and bounded.** With AI on, the live model reads
-two business descriptions more generously than the keyword fallback, so **two scores out of
-28 move** (APP-004 67→73, APP-024 58→73) and the result hash changes: **`6feb0a08` with AI
-on, `fdcce84f` with AI off**. No status, rank, territory or pin moves. This is by design and
-the timeline names both rows — but anyone who read "rules decide, AI explains" as "the output
-is bit-identical either way" should read it as "no *verdict* changes either way", which is
-what `tests/acceptance/switches.test.ts` actually enforces.
+some business descriptions more generously than the keyword fallback does; on one recorded
+run **two scores out of 28 moved** (APP-004 67→73, APP-024 58→73) and the result hash moved
+with them. No status, rank, territory or pin moves. This is by design and the timeline names
+the affected rows — but anyone who read "rules decide, AI explains" as "the output is
+bit-identical either way" should read it as "no *verdict* changes either way", which is what
+`tests/acceptance/switches.test.ts` actually enforces.
+
+The honest ceiling is the **business weight, 15 of 100**: the model's reading feeds exactly
+one score component, so it can move a total by at most that much, and under scarcity a score
+decides rank. `tests/adversarial/ai.test.ts` pins that bound against a deliberately hostile
+model. **With AI off the hash is `fdcce84f` on every machine**; with AI on there is no fixed
+hash to quote, because the value depends on what a live model returns.
 
 ---
 

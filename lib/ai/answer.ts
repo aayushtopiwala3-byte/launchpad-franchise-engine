@@ -52,6 +52,8 @@ export function answerQuestion(
       return counts(question, result, policy);
     case "no-change":
       return noChange(route);
+    case "ambiguous":
+      return ambiguous(route);
     default:
       return { text: UNKNOWN, citations: [], applicationIds: [] };
   }
@@ -118,6 +120,19 @@ function noChange(route: RoutedQuestion): ChatAnswer {
     text: `Nothing to change — ${applicationId}'s ${said.join(", and ")}.`,
     citations: [],
     applicationIds: [applicationId],
+  };
+}
+
+/**
+ * Two applicants, one stated fact. The engine will not choose between them, so the answer
+ * hands the choice back rather than applying the change to whichever was named first.
+ */
+function ambiguous(route: RoutedQuestion): ChatAnswer {
+  const named = route.applicationIds;
+  return {
+    text: `That could apply to ${named.slice(0, -1).join(", ")} or ${named[named.length - 1]}, so nothing has been changed. Say it again naming one of them, and I will propose the change for that applicant only.`,
+    citations: [],
+    applicationIds: named,
   };
 }
 

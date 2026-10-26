@@ -98,11 +98,11 @@ view.
 
 - **Upload the file, don't click "Load sample data".** The button skips the parser, and the
   parse report is the whole point of the 0:08 beat.
-- **Be precise about the hash** if it is legible on screen. With AI on the sample hashes to
-  `6feb0a08`; with AI off, `fdcce84f`. It is stable for a *fixed* configuration, not across
-  the AI switch — the live model reads two business descriptions more generously than the
-  keyword fallback, which moves two scores and therefore the hash. Say "same settings, same
-  hash", never "the hash never changes".
+- **Be precise about the hash** if it is legible on screen. With AI off the sample always
+  hashes to `fdcce84f` — quote that one. Do not quote an AI-on hash: it depends on what the
+  live model returns for the free-text fields, so it can differ between takes. Say "same
+  settings, same hash", never "the hash never changes". Row order matters too — re-ordering
+  the sheet moves the hash without moving a single verdict.
 - **If a take runs short**, the strongest ten seconds to add is Settings → turn both AI
   switches off → hard refresh → Timeline: every status, rank and pin identical, two scores
   moved, and the timeline names both. That is the "rules decide" claim proved rather than

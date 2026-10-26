@@ -33,10 +33,17 @@ If anything looks wrong, go to **System → Clear saved data** and start again. 
 **Expect:** every **status**, **rank**, **territory** and **assigned pin** is identical to
 what you saw before.
 
-**What legitimately changes:** two **scores** out of 28. On the sample, APP-004 goes 73→67
-and APP-024 goes 73→58, because the live model reads those two business descriptions more
-generously than the keyword fallback does. The result hash therefore changes too:
-**`6feb0a08` with AI on, `fdcce84f` with AI off.**
+**What legitimately changes:** a small number of **scores** — on one recorded run, two of
+28 (APP-004 73→67, APP-024 73→58) — because the live model reads those business
+descriptions more generously than the keyword fallback does. The result hash therefore
+changes too.
+
+**With AI off the hash is `fdcce84f`, and that is the number to check.** It is pinned by
+`tests/chat/scenarios.test.ts` and reproduces on every machine. There is deliberately no
+published hash for AI *on*: that value depends on what a live model returns for free text,
+so it can differ between runs and between model versions. A judge who sees a different
+AI-on hash has found normal behaviour, not a fault — the guarantee being demonstrated here
+is that **no status, rank, territory or pin moves**, which the page states explicitly.
 
 That is the honest boundary of the AI's influence: it can nudge the *ranking input* for a
 messy free-text field, and it cannot touch a verdict. Open **Timeline** and the system will
@@ -52,9 +59,10 @@ name those exact two rows for you rather than make you hunt for them.
 1. **System → Clear saved data.**
 2. Load the sample again with the same AI setting.
 
-**Expect:** the same result hash as before (`6feb0a08` AI on / `fdcce84f` AI off), and the
-same counts. The engine never reads the clock — the as-of date is an explicit input shown on
-the dashboard.
+**Expect:** with **AI off, `fdcce84f`** every time, and the same counts. The engine never
+reads the clock — the as-of date is an explicit input shown on the dashboard. With AI on,
+expect the same *counts, statuses, ranks and pins*; the hash is not a fixed number, for the
+reason given in B1.
 
 ### B3 · No pin is claimed twice
 
@@ -181,7 +189,7 @@ on a model.
 | File | Proves |
 | --- | --- |
 | `tests/acceptance/switches.test.ts` | No switch, preset or individual flag changes a verdict |
-| `tests/engine/determinism.test.ts` | Same input → same hash; row order is irrelevant |
+| `tests/engine/determinism.test.ts` | Same file in the same order → same hash. Row order changes no verdict; it does change the hash |
 | `tests/engine/allocate.test.ts` | One store per pin, counting existing stores |
 | `tests/seed/expectations.test.ts` | All 22 locked case expectations |
 | `tests/chat/scenarios.test.ts` | The six chat scenarios above, end to end, with AI off |

@@ -59,7 +59,10 @@ function cheapHash(input: string): string {
 function mergeContradictions(fallback: Contradiction[], ai: Contradiction[] | undefined) {
   if (!ai || ai.length === 0) return fallback;
   const seen = new Set(fallback.map((c) => c.field));
-  return [...fallback, ...ai.filter((c) => !seen.has(c.field))];
+  return [
+    ...fallback,
+    ...ai.filter((c) => !seen.has(c.field)).map((c): Contradiction => ({ ...c, source: "ai" })),
+  ];
 }
 
 export function runPipeline(input: PipelineInput, options: PipelineOptions): PipelineResult {
@@ -283,9 +286,11 @@ export function runPipeline(input: PipelineInput, options: PipelineOptions): Pip
         status: match ? allocation.byKey.get(match.key)!.status : c.status,
       };
     });
-    // Anyone at the exact same pin, whatever their status, is worth naming.
+    // Anyone at the exact same pin, whatever their status, is worth naming. A duplicate row
+    // is not one of them: it shares the ID and the pin but is the same application, already
+    // held and already barred from taking a slot, so naming it reads as competing with self.
     for (const other of working) {
-      if (other.key === w.key) continue;
+      if (other.key === w.key || other.n.applicationId === w.n.applicationId) continue;
       if (!other.n.pinCode || other.n.pinCode !== w.n.pinCode) continue;
       if (competitors.some((c) => c.applicationId === other.n.applicationId)) continue;
       competitors.push({

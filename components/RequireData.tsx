@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useStore } from "../lib/state/store";
 import type { PipelineResult } from "../lib/types";
 import { DataLoader } from "./DataLoader";
@@ -13,7 +13,14 @@ import { Card, EmptyState } from "./ui/primitives";
 export function RequireData({ children }: { children: (result: PipelineResult) => ReactNode }) {
   const { result, hydrated } = useStore();
 
-  if (!hydrated) {
+  // The pages above this suspend on their params promise, so this subtree can first render
+  // after the store has already restored. Painting the restored result on that first pass
+  // would contradict the placeholder the server sent and fail hydration, so the first paint
+  // here is always the placeholder and the data arrives on the pass after it.
+  const [painted, setPainted] = useState(false);
+  useEffect(() => setPainted(true), []);
+
+  if (!painted || !hydrated) {
     return (
       <Card>
         <EmptyState title="Loading…" body="Reading anything saved in this browser." />

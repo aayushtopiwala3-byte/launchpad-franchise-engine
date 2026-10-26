@@ -220,6 +220,15 @@ export function parseWorkbook(data: ArrayBuffer | Uint8Array, options: ParseOpti
     report.sheetsMissing.push("Territories");
   }
 
+  // SheetJS will happily read a text file as a one-cell workbook, so "it parsed" is not the
+  // same as "it was our file". If neither judge sheet was recognised there is nothing to
+  // publish, and publishing the empty result would wipe whatever is already on screen.
+  if (report.rowsRead.Applications === undefined && report.rowsRead.Territories === undefined) {
+    throw new Error(
+      "No Applications or Territories sheet could be recognised in this file. Check that it is the franchise workbook, with a header row naming the columns.",
+    );
+  }
+
   if (storeSheet) {
     const rows = sheetRows(book, storeSheet);
     const match = findHeaderRow(rows, STORE_COLUMNS);

@@ -29,7 +29,10 @@ const scale = (points: number, key: keyof typeof DEFAULT_MAX, policy: PolicyProf
 
 export function investmentPoints(investment: number | null, tierMin: number | null): { points: number; basis: string } {
   if (investment === null || tierMin === null || tierMin <= 0) {
-    return { points: 8, basis: "Investment not stated — scored at the lowest band." };
+    // Null arrives here from a blank cell and from one whose units N-01 could not settle.
+    // Saying "not stated" would be false in the second case, so the basis reports what the
+    // engine read rather than what the file holds. DQ-07 carries the detail either way.
+    return { points: 8, basis: "No investment figure was read — scored at the lowest band." };
   }
   const ratio = investment / tierMin;
   const r = Math.round(ratio * 100) / 100;

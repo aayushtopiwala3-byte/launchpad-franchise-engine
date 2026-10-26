@@ -94,6 +94,21 @@ describe("row order does not change any decision", () => {
     }
   });
 
+  /**
+   * The exact edge of the guarantee, pinned because the documents used to overstate it.
+   * resultHash digests the applicant array in the order it came, so re-ordering the sheet
+   * re-orders the digest input and the hash moves. Every decision stays put. The hash is a
+   * fingerprint of one run of one file, not a fingerprint of the verdicts, and a judge
+   * comparing hashes must therefore keep the row order they started with.
+   */
+  it("moves the hash when rows are re-ordered, without moving a decision", () => {
+    const forward = run(APPLICATIONS, TERRITORIES);
+    const reversed = run([...APPLICATIONS].reverse(), TERRITORIES);
+
+    expect(decisions(reversed)).toEqual(decisions(forward));
+    expect(reversed.resultHash).not.toBe(forward.resultHash);
+  });
+
   it("holds the one-store-per-pin invariant in every shuffle", () => {
     for (let seed = 1; seed <= 50; seed++) {
       const rnd = mulberry32(seed);

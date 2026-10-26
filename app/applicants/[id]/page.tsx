@@ -28,7 +28,7 @@ function Identity({ applicant: a, log }: { applicant: Applicant; log: Normalisat
     <Card>
       <CardHeader
         title="What the file said"
-        subtitle={`Row ${a.rowNumber} of the Applications sheet. Anything blank below was blank there.`}
+        subtitle={`Row ${a.rowNumber} of the Applications sheet. The cell itself is printed under every value we read from it.`}
       />
       <dl className="grid grid-cols-2 gap-3 px-4 py-3 sm:grid-cols-4">
         <Field label="Name">
@@ -52,7 +52,16 @@ function Identity({ applicant: a, log }: { applicant: Applicant; log: Normalisat
           <Explain block>from the territory</Explain>
         </Field>
         <Field label="Investment">
-          <Value suffix="lakh">{n.investmentLakh}</Value>
+          {/* A filled cell whose units N-01 could not settle normalises to null like a
+              blank one. Printing "not stated" above a cell reading 5000 would be its own
+              untruth, so the two cases are told apart here. */}
+          {n.investmentLakh === null && a.raw.investmentLakh.trim() !== "" ? (
+            <span className="text-amber-700 italic" title="The cell was filled in, but its units could not be settled.">
+              could not be read
+            </span>
+          ) : (
+            <Value suffix="lakh">{n.investmentLakh}</Value>
+          )}
           <RawCell value={a.raw.investmentLakh} />
         </Field>
         <Field label="Retail experience">

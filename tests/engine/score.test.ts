@@ -34,10 +34,14 @@ describe("investment headroom, out of 30", () => {
     expect(investmentPoints(investment, 20).points).toBe(expected);
   });
 
-  it("scores the lowest band, not zero, when nothing is stated", () => {
+  it("scores the lowest band, not zero, when no figure was read", () => {
     const out = investmentPoints(null, 20);
     expect(out.points).toBe(8);
-    expect(out.basis).toContain("not stated");
+    // Changed wording, same contract. Null reaches here from a blank cell and from one
+    // whose units N-01 could not settle, so the basis reports what the engine read rather
+    // than claiming the file said nothing.
+    expect(out.basis).toContain("No investment figure was read");
+    expect(out.basis).toContain("lowest band");
   });
 });
 

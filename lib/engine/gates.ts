@@ -6,6 +6,7 @@ import type {
   RuleResult,
   Tier,
 } from "../types";
+import { APP_COLUMNS } from "./quality";
 
 export interface GateContext {
   policy: PolicyProfile;
@@ -210,6 +211,13 @@ export function evaluateReadiness(
   const tierMinInv = tier ? policy.tierMinInvestmentLakh[tier] : null;
   const tierMinSpace = tier ? policy.tierMinSpaceSqft[tier] : null;
 
+  // A figure whose units N-01 could not settle arrives as null, the same as a blank cell.
+  // Calling a cell that holds 5000 "not stated" would be its own untruth, so R-01 says only
+  // that it could not be read and leaves the detail to the DQ-07 issue that raised it.
+  const investmentUnreadable =
+    n.investmentLakh === null &&
+    blockingIssues.some((i) => i.id === "DQ-07" && i.column === APP_COLUMNS.investmentLakh);
+
   // R-01 Investment at or above the tier minimum
   const r01 = tierMinInv === null || n.investmentLakh === null ? false : n.investmentLakh >= tierMinInv;
   const gap =
@@ -227,13 +235,15 @@ export function evaluateReadiness(
     passed: r01,
     failReason: r01
       ? undefined
-      : n.investmentLakh === null
-        ? "Investment capacity is not stated."
-        : `Investment of ${n.investmentLakh} lakh is ${gap} lakh short of the ${tierMinInv} lakh minimum for ${tier}.`,
+      : investmentUnreadable
+        ? "Investment capacity was written in units we could not settle, so it has not been read."
+        : n.investmentLakh === null
+          ? "Investment capacity is not stated."
+          : `Investment of ${n.investmentLakh} lakh is ${gap} lakh short of the ${tierMinInv} lakh minimum for ${tier}.`,
     unlockCondition: r01
       ? undefined
       : n.investmentLakh === null
-        ? "Confirm: Investment capacity (rupees lakh)"
+        ? `Confirm: ${APP_COLUMNS.investmentLakh}`
         : `Investment gap of ${gap} lakh — could qualify with a co-investor or financing.`,
   });
 

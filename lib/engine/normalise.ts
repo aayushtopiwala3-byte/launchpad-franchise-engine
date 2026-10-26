@@ -41,14 +41,15 @@ export const text = (v: unknown): string | null => {
   return String(v).replace(/\s+/g, " ").trim();
 };
 
-/**
- * N-01 Investment. Accepts 25, "25 lakh", "25L", "25 lacs", "25,00,000", "2500000", "Rs 25".
- * Any resulting number above 1,000 is read as rupees and divided by 1,00,000.
- */
-export function normaliseInvestment(raw: unknown): number | null {
+/** Above this, the figure is read as rupees rather than lakh. */
+const RUPEES_ABOVE = 1000;
+
+/** Below this many lakh, no reading of the cell is a sum a store could open on. */
+const PLAUSIBLE_MIN_LAKH = 1;
+
+function investmentFigure(raw: unknown): number | null {
   if (blank(raw)) return null;
-  const original = String(raw);
-  const cleaned = original
+  const cleaned = String(raw)
     .replace(/[₹]/g, "")
     .replace(/\b(rs|inr|rupees?)\b/gi, "")
     .replace(/\b(lakhs?|lacs?|lakh)\b/gi, "")
@@ -56,10 +57,36 @@ export function normaliseInvestment(raw: unknown): number | null {
     .replace(/[,\s]/g, "");
   const match = cleaned.match(/-?\d+(\.\d+)?/);
   if (!match) return null;
-  let n = Number(match[0]);
-  if (!Number.isFinite(n)) return null;
-  if (n > 1000) n = n / 100000;
-  return Math.round(n * 100) / 100;
+  const n = Number(match[0]);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * N-01 Investment. Accepts 25, "25 lakh", "25L", "25 lacs", "25,00,000", "2500000", "Rs 25".
+ * Any resulting number above 1,000 is read as rupees and divided by 1,00,000.
+ *
+ * Null for a cell whose units we cannot settle — see `investmentUnitsAreAmbiguous`. Null
+ * already means "the file did not tell us", and a figure we had to guess at tells us no
+ * more than a blank one does.
+ */
+export function normaliseInvestment(raw: unknown): number | null {
+  const n = investmentFigure(raw);
+  if (n === null) return null;
+  if (n <= RUPEES_ABOVE) return Math.round(n * 100) / 100;
+  const asRupees = n / 100000;
+  return asRupees < PLAUSIBLE_MIN_LAKH ? null : Math.round(asRupees * 100) / 100;
+}
+
+/**
+ * True when the rupees reading leaves too little to open a store with, and the figure as
+ * written is far past anything plausible in lakh. "2500000" is unambiguous — 25 lakh, the
+ * case the divide exists for. "5000" is not: it is either 50 crore or five thousand rupees,
+ * and the column header says lakh while the divide says otherwise. Acting on either reading
+ * would be deciding someone's application on our own arithmetic rather than on their file.
+ */
+export function investmentUnitsAreAmbiguous(raw: unknown): boolean {
+  const n = investmentFigure(raw);
+  return n !== null && n > RUPEES_ABOVE && n / 100000 < PLAUSIBLE_MIN_LAKH;
 }
 
 /** N-02 Pin code. Strip everything that is not a digit. Must be exactly 6 digits. */

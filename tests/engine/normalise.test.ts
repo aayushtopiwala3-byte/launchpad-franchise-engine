@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  investmentUnitsAreAmbiguous,
   NormalisationLog,
   normaliseApplicationRow,
   normaliseCity,
@@ -29,9 +30,25 @@ describe("N-01 investment", () => {
     ["INR 30,00,000", 30],
     ["12.5", 12.5],
     ["1000", 1000],
-    ["1001", 0.01],
   ])("reads %s as %s lakh", (input, expected) => {
     expect(normaliseInvestment(input)).toBe(expected);
+  });
+
+  /**
+   * Changed contract. This used to read "1001" as 0.01 lakh, and G-02 then rejected the
+   * applicant outright on that figure. A thousand and one of anything is neither a credible
+   * number of lakh nor enough rupees to open a store with, so the cell has not told us what
+   * they can invest. Null says exactly that, and quality.ts raises DQ-07 to hold the row.
+   */
+  it.each(["1001", "5000", "90000"])("returns null for %s, whose units cannot be settled", (v) => {
+    expect(normaliseInvestment(v)).toBeNull();
+    expect(investmentUnitsAreAmbiguous(v)).toBe(true);
+  });
+
+  it("does not call a figure ambiguous when one reading is plausible", () => {
+    for (const v of ["25", "1000", "2500000", "", "to be confirmed"]) {
+      expect(investmentUnitsAreAmbiguous(v)).toBe(false);
+    }
   });
 
   it("returns null for a blank, never zero", () => {

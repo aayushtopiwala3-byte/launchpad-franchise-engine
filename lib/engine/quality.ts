@@ -7,7 +7,7 @@ import type {
   RawApplicationRow,
   RawTerritoryRow,
 } from "../types";
-import { normalisePin } from "./normalise";
+import { investmentUnitsAreAmbiguous, normalisePin } from "./normalise";
 
 export const APP_COLUMNS = {
   applicationId: "Application ID",
@@ -40,6 +40,8 @@ export interface Contradiction {
   field: "City" | "Space available" | "Floor" | "Space size" | "Investment" | "Target launch";
   quote: string;
   explanation: string;
+  /** Absent means the deterministic twin found it, so the wording is the engine's own. */
+  source?: "ai";
 }
 
 export interface AppUnderCheck {
@@ -102,6 +104,12 @@ export function checkApplications(apps: AppUnderCheck[]): QualityIssue[] {
         }),
       );
 
+    // An investment figure whose units N-01 could not settle arrives here as null, the same
+    // as a blank cell. It is not blank, so it is reported as its own fault below rather than
+    // as a missing field.
+    const investmentUnreadable =
+      n.investmentLakh === null && investmentUnitsAreAmbiguous(raw.investmentLakh);
+
     // DQ-01 Missing required field
     const required: [string, unknown, string][] = [
       [APP_COLUMNS.applicationId, n.applicationId || null, raw.applicationId],
@@ -109,7 +117,11 @@ export function checkApplications(apps: AppUnderCheck[]): QualityIssue[] {
       [APP_COLUMNS.city, n.city, raw.city],
       [APP_COLUMNS.state, n.state, raw.state],
       [APP_COLUMNS.pinCode, raw.pinCode?.trim() ? raw.pinCode : null, raw.pinCode],
-      [APP_COLUMNS.investmentLakh, n.investmentLakh, raw.investmentLakh],
+      [
+        APP_COLUMNS.investmentLakh,
+        investmentUnreadable ? raw.investmentLakh : n.investmentLakh,
+        raw.investmentLakh,
+      ],
       [APP_COLUMNS.retailExperienceYears, n.retailExperienceYears, raw.retailExperienceYears],
       [APP_COLUMNS.spaceAvailable, n.spaceAvailable, raw.spaceAvailable],
     ];
@@ -239,6 +251,22 @@ export function checkApplications(apps: AppUnderCheck[]): QualityIssue[] {
       }
     }
 
+    // DQ-07 A figure whose units we cannot settle. N-01 reads anything above 1,000 as rupees,
+    // which is right for 2500000 and wrong for 5000. Where neither reading is plausible the
+    // file has not told us what they can invest, and deciding on either number would be
+    // deciding on our own arithmetic rather than on their application.
+    if (investmentUnreadable) {
+      add(
+        "DQ-07",
+        "blocking",
+        APP_COLUMNS.investmentLakh,
+        raw.investmentLakh,
+        `${APP_COLUMNS.investmentLakh} reads ${String(raw.investmentLakh).trim()}. Read as lakh that is far above anything plausible; read as rupees it is too little to open a store with. We cannot tell which was meant.`,
+        "Held ON HOLD until the figure is confirmed. Neither reading was acted on and no value was assumed.",
+        APP_COLUMNS.investmentLakh,
+      );
+    }
+
     // DQ-08 Duplicate Application ID / same name + pin
     if (n.applicationId) {
       const prior = seenIds.get(n.applicationId);
@@ -276,12 +304,22 @@ export function checkApplications(apps: AppUnderCheck[]): QualityIssue[] {
     // DQ-13 Notes contradict the structured fields
     for (const c of app.contradictions) {
       const blocking = BLOCKING_CONTRADICTION_FIELDS.has(c.field);
+      const stated = fieldValueFor(n, c.field);
+      // A model's free text never speaks in the engine's voice. What it reports that the
+      // file can confirm — which field, and a quote that is really there — is kept; its
+      // reasoning is not reprinted, because nothing in the file vouches for it.
+      const fromAi = c.source === "ai";
+      const quoted = quoteIsInNotes(n.notes, c.quote);
       add(
         "DQ-13",
         blocking ? "blocking" : "warning",
         `${APP_COLUMNS.notes} vs ${c.field}`,
-        c.quote,
-        `The notes say "${c.quote}" but ${c.field} says ${fieldValueFor(n, c.field)}. ${c.explanation}`,
+        fromAi && !quoted ? null : c.quote,
+        !fromAi
+          ? `The notes say "${c.quote}" but ${c.field} says ${stated}. ${c.explanation}`
+          : quoted
+            ? `The notes say "${c.quote}" but ${c.field} says ${stated}. The AI reader flagged this; the quote is from the file.`
+            : `The AI reader flagged the notes as contradicting ${c.field}, which says ${stated}. The wording it reported is not in the file, so only the flag was kept.`,
         blocking
           ? `Held ON HOLD until ${c.field} is confirmed. Neither value was overwritten.`
           : "Flagged for the manager. The decision was not changed.",
@@ -291,6 +329,13 @@ export function checkApplications(apps: AppUnderCheck[]): QualityIssue[] {
   }
 
   return out;
+}
+
+/** A model reports a quote; only the file can confirm it is one. */
+function quoteIsInNotes(notes: string | null, quote: string): boolean {
+  if (!notes) return false;
+  const flat = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+  return flat(quote).length > 0 && flat(notes).includes(flat(quote));
 }
 
 function rawFor(raw: RawApplicationRow, column: string): string {

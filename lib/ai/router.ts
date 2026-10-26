@@ -8,6 +8,8 @@ export type ChatIntent =
   | "counts"
   | "update"
   | "no-change"
+  /** A stated fact that could belong to more than one applicant. Never guessed at. */
+  | "ambiguous"
   | "unknown";
 
 export interface RoutedQuestion {
@@ -46,14 +48,23 @@ const UPDATE_FIELDS: { re: RegExp; field: string; unit?: string }[] = [
   { re: /\b(pin\s?code|pin)\b/i, field: "pinCode" },
 ];
 
+/**
+ * Managers state a change in the past tense ("has now found") as readily as in the
+ * imperative ("increase its investment to 30 lakh"), so both moods are matched. A verb
+ * alone never makes an update: `extractPatches` must still read a field *and* a value,
+ * and falls through to the question branches when it cannot.
+ */
 const UPDATE_VERB =
-  /\b(found|secured|got|signed|increased|raised|will have|now has|has now|moved to|changed to)\b/i;
+  /\b(found|secured|got|signed|increase[sd]?|raise[sd]?|set|change[sd]?|move[sd]?|update[sd]?|correct(?:ed)?|revise[sd]?|will have|now has|has now|should be|is now|are now)\b/i;
 
 /**
  * A sentence that opens by pointing back at something already named — "it is 450 sq ft".
  * Only these carry the previous turn's applicant forward; a fresh sentence must name one.
  */
 const REFERS_BACK = /^(it|they|that|this|the (?:shop|space|site|premises|property|floor))\b/i;
+
+/** "Actually, that should be 35 lakh" is still pointing back once the filler is dropped. */
+const DISCOURSE_OPENER = /^(?:actually|sorry|no|wait|correction|oops|apologies)\b[,\s]*/i;
 
 /** What the conversation has already established, so a follow-up need not repeat it. */
 export interface ChatContext {
@@ -72,7 +83,8 @@ export function routeQuestion(
 ): RoutedQuestion {
   const q = question.trim();
   const spoken = ids(q, APP_ID);
-  const carried = spoken.length === 0 && REFERS_BACK.test(q) ? (context?.applicationIds ?? []) : [];
+  const pointsBack = REFERS_BACK.test(q.replace(DISCOURSE_OPENER, ""));
+  const carried = spoken.length === 0 && pointsBack ? (context?.applicationIds ?? []) : [];
   const appIds = spoken.length > 0 ? spoken : carried;
   const terIds = ids(q, TER_ID);
   const base = {
@@ -86,14 +98,22 @@ export function routeQuestion(
   // A carried-over applicant only ever earns an update, and only when a field and a value
   // can both be read. Nothing is assumed about which question a bare sentence was asking.
   if (carried.length > 0) {
-    const { applied, unchanged } = extractPatches(q, carried, result);
+    if (carried.length > 1 && statedChanges(q).length > 0) {
+      return { ...base, applicationIds: carried, intent: "ambiguous" };
+    }
+    const { applied, unchanged } = extractPatches(q, carried[0], result);
     if (applied.length > 0) return { ...base, intent: "update", patches: applied };
     if (unchanged.length > 0) return { ...base, intent: "no-change", unchanged };
     return { ...base, applicationIds: [], intent: "unknown", deterministic: false };
   }
 
   if (UPDATE_VERB.test(q) && appIds.length > 0) {
-    const { applied, unchanged } = extractPatches(q, appIds, result);
+    // One sentence, two applicants, one fact: which of them it belongs to is the manager's
+    // to say. Picking the first would be a silent decision about someone's application.
+    if (appIds.length > 1 && statedChanges(q).length > 0) {
+      return { ...base, intent: "ambiguous" };
+    }
+    const { applied, unchanged } = extractPatches(q, appIds[0], result);
     if (applied.length > 0) return { ...base, intent: "update", patches: applied };
     if (unchanged.length > 0) return { ...base, intent: "no-change", unchanged };
   }
@@ -126,17 +146,26 @@ export function routeQuestion(
   return { ...base, intent: "unknown", deterministic: false };
 }
 
-function extractPatches(q: string, appIds: string[], result: PipelineResult): GroundedPatches {
-  const applicationId = appIds[0];
-
-  // One statement may carry several facts ("a shop on the ground floor"), so every
-  // field the manager touched gets its own patch rather than only the first.
-  const stated = UPDATE_FIELDS.filter((f) => f.re.test(q)).flatMap(({ field }) => {
+/**
+ * The facts a sentence states, independent of who they are about. One statement may carry
+ * several ("a shop on the ground floor"), so every field the manager touched is returned
+ * rather than only the first.
+ */
+function statedChanges(q: string): { field: string; newValue: string }[] {
+  return UPDATE_FIELDS.filter((f) => f.re.test(q)).flatMap(({ field }) => {
     const newValue = readNewValue(q, field);
-    return newValue === null
-      ? []
-      : [{ applicationId, field, oldValue: null, newValue, sourceQuote: q }];
+    return newValue === null ? [] : [{ field, newValue }];
   });
+}
+
+function extractPatches(q: string, applicationId: string, result: PipelineResult): GroundedPatches {
+  const stated = statedChanges(q).map(({ field, newValue }) => ({
+    applicationId,
+    field,
+    oldValue: null,
+    newValue,
+    sourceQuote: q,
+  }));
 
   return ground(stated, result);
 }
