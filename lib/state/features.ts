@@ -7,7 +7,6 @@ import type { FeatureFlags } from "../types";
 export const FEATURE_KEYS = [
   "aiExplanations",
   "aiContradictionCheck",
-  "map",
   "counterfactuals",
   "partnerMessages",
   "partnerView",
@@ -24,10 +23,6 @@ export const FEATURE_LABELS: Record<keyof FeatureFlags, { title: string; help: s
   aiContradictionCheck: {
     title: "AI contradiction check",
     help: "Reads the Notes column for statements that contradict the structured fields. Off falls back to keyword matching.",
-  },
-  map: {
-    title: "Map",
-    help: "Plots territories, stores and applicants by pin-code centroid.",
   },
   counterfactuals: {
     title: "What would change this decision",
@@ -59,7 +54,6 @@ export const FEATURE_PRESETS: Record<string, FeatureFlags> = {
   Full: {
     aiExplanations: true,
     aiContradictionCheck: true,
-    map: true,
     counterfactuals: true,
     partnerMessages: true,
     partnerView: true,
@@ -70,7 +64,6 @@ export const FEATURE_PRESETS: Record<string, FeatureFlags> = {
   "Judge demo": {
     aiExplanations: true,
     aiContradictionCheck: true,
-    map: true,
     counterfactuals: true,
     partnerMessages: true,
     partnerView: true,
@@ -81,7 +74,6 @@ export const FEATURE_PRESETS: Record<string, FeatureFlags> = {
   "Safe mode": {
     aiExplanations: false,
     aiContradictionCheck: false,
-    map: false,
     counterfactuals: true,
     partnerMessages: true,
     partnerView: true,

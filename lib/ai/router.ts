@@ -50,12 +50,30 @@ const UPDATE_VERB =
   /\b(found|secured|got|signed|increased|raised|will have|now has|has now|moved to|changed to)\b/i;
 
 /**
+ * A sentence that opens by pointing back at something already named — "it is 450 sq ft".
+ * Only these carry the previous turn's applicant forward; a fresh sentence must name one.
+ */
+const REFERS_BACK = /^(it|they|that|this|the (?:shop|space|site|premises|property|floor))\b/i;
+
+/** What the conversation has already established, so a follow-up need not repeat it. */
+export interface ChatContext {
+  /** Applicants the previous turn was about, most recent first. */
+  applicationIds: string[];
+}
+
+/**
  * The spec's rule: the deterministic router runs first and the AI only sees what it
  * cannot match. Every branch here is a question we can answer from the result alone.
  */
-export function routeQuestion(question: string, result: PipelineResult): RoutedQuestion {
+export function routeQuestion(
+  question: string,
+  result: PipelineResult,
+  context?: ChatContext,
+): RoutedQuestion {
   const q = question.trim();
-  const appIds = ids(q, APP_ID);
+  const spoken = ids(q, APP_ID);
+  const carried = spoken.length === 0 && REFERS_BACK.test(q) ? (context?.applicationIds ?? []) : [];
+  const appIds = spoken.length > 0 ? spoken : carried;
   const terIds = ids(q, TER_ID);
   const base = {
     applicationIds: appIds,
@@ -64,6 +82,15 @@ export function routeQuestion(question: string, result: PipelineResult): RoutedQ
     unchanged: [],
     deterministic: true,
   };
+
+  // A carried-over applicant only ever earns an update, and only when a field and a value
+  // can both be read. Nothing is assumed about which question a bare sentence was asking.
+  if (carried.length > 0) {
+    const { applied, unchanged } = extractPatches(q, carried, result);
+    if (applied.length > 0) return { ...base, intent: "update", patches: applied };
+    if (unchanged.length > 0) return { ...base, intent: "no-change", unchanged };
+    return { ...base, applicationIds: [], intent: "unknown", deterministic: false };
+  }
 
   if (UPDATE_VERB.test(q) && appIds.length > 0) {
     const { applied, unchanged } = extractPatches(q, appIds, result);

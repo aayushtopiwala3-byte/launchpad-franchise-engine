@@ -49,6 +49,17 @@ function routeFromAi(payload: ChatRoutePayload, result: PipelineResult): RoutedQ
   };
 }
 
+/** The applicants the conversation last named, so "it is 450 sq ft" has something to mean. */
+function lastMentioned(history: ChatMessage[]): string[] {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const named = [...new Set(history[i].text.match(/\bAPP-\d+\b/gi) ?? [])].map((s) =>
+      s.toUpperCase(),
+    );
+    if (named.length > 0) return named;
+  }
+  return [];
+}
+
 function Chat({ result }: { result: PipelineResult }) {
   const store = useStore();
   const { chat, setChat, policy, flags, ledger, applyPatches, log } = store;
@@ -88,7 +99,7 @@ function Chat({ result }: { result: PipelineResult }) {
     const user: ChatMessage = { id: uid(), role: "user", text: q, at: new Date().toISOString() };
     let history = push(user);
 
-    let route = routeQuestion(q, result);
+    let route = routeQuestion(q, result, { applicationIds: lastMentioned(chat) });
     let routedBy: ChatMessage["routedBy"] = "deterministic";
 
     if (!route.deterministic && flags.aiExplanations) {

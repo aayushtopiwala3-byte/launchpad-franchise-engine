@@ -41,7 +41,7 @@ import type {
 import { DEFAULT_FLAGS, decodeFlags } from "./features";
 import { HEALTHY, appendLog, logEntry } from "./health";
 import { load, save, clear as clearStorage, isSafeMode, type PersistedState } from "./persistence";
-import { makeVersion } from "./versions";
+import { applyPatchesToInput, invertPatches, makeVersion, undoableVersion } from "./versions";
 
 /** How many versions survive a reload. Enough for a long session, small enough to store. */
 const STORED_VERSIONS = 40;
@@ -218,6 +218,10 @@ export interface StoreValue extends AppState {
   loadFile: (file: File) => Promise<void>;
   setIncludeExampleRow: (include: boolean) => void;
   applyPatches: (patches: Patch[], trigger: VersionTrigger, detail?: string) => PipelineResult | null;
+  /** Reverses the change `undoable` names. Returns null when there is nothing to undo. */
+  undo: () => PipelineResult | null;
+  /** The change an undo would reverse, so the UI can name it or offer nothing at all. */
+  undoable: Version | null;
   applyPolicy: (policy: PolicyProfile) => void;
   saveProfile: (profile: PolicyProfile) => void;
   deleteProfile: (name: string) => void;
@@ -240,25 +244,6 @@ export interface StoreValue extends AppState {
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
-
-/** Applications are patched by Application ID; the first matching row wins. */
-function applyPatchesToInput(input: PipelineInput, patches: Patch[]): PipelineInput {
-  if (patches.length === 0) return input;
-  const applied = new Set<string>();
-  return {
-    ...input,
-    applications: input.applications.map((row) => {
-      let next = row;
-      for (const p of patches) {
-        const once = `${p.applicationId}|${p.field}`;
-        if (row.applicationId !== p.applicationId || applied.has(once)) continue;
-        applied.add(once);
-        next = { ...next, [p.field]: p.newValue ?? "" };
-      }
-      return next;
-    }),
-  };
-}
 
 function costEntry(call: AiCallRecord): CostLedgerEntry {
   return {
@@ -306,7 +291,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       storageAvailable: outcome.available,
       corruptPayload: outcome.corruptPayload,
       flags: safe
-        ? { ...DEFAULT_FLAGS, aiExplanations: false, aiContradictionCheck: false, map: false }
+        ? { ...DEFAULT_FLAGS, aiExplanations: false, aiContradictionCheck: false }
         : (urlFlags ?? stored?.flags ?? DEFAULT_FLAGS),
       policy: stored?.policy ?? BRAND_DEFAULT_POLICY,
       profiles: stored?.profiles?.length ? stored.profiles : POLICY_PRESETS,
@@ -654,6 +639,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [publish],
   );
 
+  /**
+   * Undo is a step forwards, not a deletion. It inverts the patches of the last version
+   * that carried any and sends them down the same path a chat update takes, so the earlier
+   * verdict is recomputed by the rules rather than replayed from a stored copy, and the
+   * history gains a version instead of losing one.
+   */
+  const undo = useCallback(() => {
+    const target = undoableVersion(stateRef.current.versions);
+    if (!target) return null;
+    return applyPatches(
+      invertPatches(target.patches, `Undo of ${target.versionId}`),
+      "undo",
+      `reversed ${target.versionId}`,
+    );
+  }, [applyPatches]);
+
   /** Accepting runs the same patch pipeline as the chat, so a partner update is auditable. */
   const resolvePendingUpdate = useCallback(
     (id: string, accept: boolean) => {
@@ -691,6 +692,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       loadFile,
       setIncludeExampleRow,
       applyPatches,
+      undo,
+      undoable: undoableVersion(state.versions),
       applyPolicy,
       saveProfile: (profile) => {
         const rest = stateRef.current.profiles.filter((p) => p.name !== profile.name);
@@ -724,7 +727,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dismissRollback: () => dispatch({ type: "dismissRollback" }),
       corruptPayloadDownloadable: state.corruptPayload,
     }),
-    [state, loadSample, loadFile, setIncludeExampleRow, applyPatches, applyPolicy],
+    [state, loadSample, loadFile, setIncludeExampleRow, applyPatches, undo, applyPolicy],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

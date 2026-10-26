@@ -40,7 +40,7 @@ deliberately left in.
 No API key is needed. Every AI touchpoint has a deterministic fallback.
 
 ```bash
-npm test         # 297 tests
+npm test         # 318 tests
 npm run typecheck
 npm run build
 ```
@@ -172,5 +172,5 @@ lib/ai/       the four narrow AI jobs, each with a fallback
 lib/parse/    workbook reading and column matching
 lib/export/   the six-sheet .xlsx builder
 lib/state/    store, versions, persistence, policy
-tests/        297 tests across 17 files
+tests/        318 tests across 18 files
 ```

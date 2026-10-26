@@ -110,8 +110,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         {safeMode ? (
           <Banner tone="info" title="Safe mode">
-            AI, the map and saving are switched off. Every decision still works — the rules never
-            needed any of them.
+            AI and saving are switched off. Every decision still works — the rules never needed
+            either of them.
           </Banner>
         ) : null}
 

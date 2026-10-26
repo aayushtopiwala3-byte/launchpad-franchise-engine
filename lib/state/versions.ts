@@ -1,6 +1,7 @@
 import type {
   Applicant,
   Patch,
+  PipelineInput,
   PipelineResult,
   StatusSnapshotEntry,
   Version,
@@ -72,6 +73,7 @@ const TRIGGER_LABELS: Record<VersionTrigger, string> = {
   "partner-update": "Partner update accepted",
   "include-example-row": "Example row included",
   "ai-enrichment": "AI reading applied",
+  undo: "Change undone",
 };
 
 export function makeVersion(
@@ -113,4 +115,51 @@ export function diffBetween(
   const to = versionById(versions, toId);
   if (!from || !to) return [];
   return diffSnapshots(from.snapshot, to.snapshot, applicants);
+}
+
+/** Applications are patched by Application ID; the first matching row wins. */
+export function applyPatchesToInput(input: PipelineInput, patches: Patch[]): PipelineInput {
+  if (patches.length === 0) return input;
+  const applied = new Set<string>();
+  return {
+    ...input,
+    applications: input.applications.map((row) => {
+      let next = row;
+      for (const p of patches) {
+        const once = `${p.applicationId}|${p.field}`;
+        if (row.applicationId !== p.applicationId || applied.has(once)) continue;
+        applied.add(once);
+        next = { ...next, [p.field]: p.newValue ?? "" };
+      }
+      return next;
+    }),
+  };
+}
+
+/**
+ * The inverse of a patch is the same patch read backwards. A patch's `oldValue` is re-read
+ * from the applicant's own raw cell when it is grounded, never taken from the model, so
+ * swapping the two values puts back the exact text the file held — which is what lets the
+ * re-run land on the earlier result rather than merely near it. The quote is the system
+ * naming its own action; inventing words the operator never said would be a worse lie than
+ * leaving it blank.
+ */
+export function invertPatches(patches: Patch[], sourceQuote: string): Patch[] {
+  return patches.map((p) => ({
+    applicationId: p.applicationId,
+    field: p.field,
+    oldValue: p.newValue,
+    newValue: p.oldValue,
+    sourceQuote,
+  }));
+}
+
+/**
+ * The change an undo would reverse: the newest version that carried patches, which in
+ * practice is a chat update or an accepted partner update. An undo carries the inverse
+ * patches and so is itself undoable — a redo falls out of the same rule rather than
+ * needing one of its own.
+ */
+export function undoableVersion(versions: Version[]): Version | null {
+  return [...versions].reverse().find((v) => v.patches.length > 0) ?? null;
 }

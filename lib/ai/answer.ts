@@ -96,6 +96,13 @@ function explain(applicants: Applicant[], policy: PolicyProfile): ChatAnswer {
     });
 
     if (a.unlockCondition) parts.push(`To move forward: ${a.unlockCondition}`);
+    if (a.reservedUntil) {
+      parts.push(
+        a.assignedPin
+          ? `Pin ${a.assignedPin} is held for them until ${a.reservedUntil}.`
+          : `The reservation runs until ${a.reservedUntil}.`,
+      );
+    }
   }
 
   return { text: parts.join(" "), citations, applicationIds: applicants.map((a) => a.applicationId) };
@@ -195,11 +202,17 @@ function competitors(
   };
 }
 
+/**
+ * `usableCapacity` already excludes pins an existing store sits on, so only the approved and
+ * reserved holders consume a slot. Counting every holder would subtract the stores twice.
+ */
+function freeSlots(t: PipelineResult["territories"][number]): number {
+  const consumed = Object.values(t.pinHolders).filter((h) => h.kind !== "store").length;
+  return Math.max(0, t.usableCapacity - consumed);
+}
+
 function capacity(result: PipelineResult): ChatAnswer {
-  const open = result.territories.filter((t) => {
-    const taken = Object.keys(t.pinHolders).length;
-    return t.usableCapacity - taken > 0;
-  });
+  const open = result.territories.filter((t) => freeSlots(t) > 0);
 
   if (open.length === 0) {
     return {
@@ -210,7 +223,7 @@ function capacity(result: PipelineResult): ChatAnswer {
   }
 
   const lines = open.map((t) => {
-    const free = t.usableCapacity - Object.keys(t.pinHolders).length;
+    const free = freeSlots(t);
     return `${t.territoryId} (${t.city ?? "city not stated"}, ${t.priority ?? "priority not stated"} priority) has ${free} free`;
   });
 

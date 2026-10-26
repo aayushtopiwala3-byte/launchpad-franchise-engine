@@ -317,7 +317,6 @@ export interface PolicyProfile {
 export interface FeatureFlags {
   aiExplanations: boolean;
   aiContradictionCheck: boolean;
-  map: boolean;
   counterfactuals: boolean;
   partnerMessages: boolean;
   partnerView: boolean;
@@ -372,7 +371,8 @@ export type VersionTrigger =
   | "override"
   | "partner-update"
   | "include-example-row"
-  | "ai-enrichment";
+  | "ai-enrichment"
+  | "undo";
 
 export interface StatusSnapshotEntry {
   key: string;

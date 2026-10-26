@@ -5,6 +5,8 @@ import { useMemo, useState } from "react";
 import { AppShell } from "../../components/shell/AppShell";
 import { RequireData } from "../../components/RequireData";
 import {
+  Banner,
+  Button,
   Card,
   CardHeader,
   EmptyState,
@@ -143,6 +145,33 @@ function Compare({
   );
 }
 
+/**
+ * Undo is offered as a sentence rather than an arrow icon, because the operator has to be
+ * able to read which change is about to be reversed before they reverse it. Nothing is
+ * rendered when no version carries a patch — a permanently greyed button would only be a
+ * question the page cannot answer.
+ */
+function UndoChange() {
+  const { undoable, undo } = useStore();
+  if (!undoable) return null;
+
+  return (
+    <Banner
+      tone="info"
+      title={`The most recent change was ${undoable.versionId} — ${undoable.label}`}
+      action={
+        <Button size="sm" variant="secondary" onClick={() => undo()}>
+          Undo the change from {undoable.versionId}
+        </Button>
+      }
+    >
+      Undoing puts the old answers back into the file and re-runs the rules over them, so the
+      restored decisions are worked out again rather than copied. It is recorded here as a new
+      version: nothing leaves this history.
+    </Banner>
+  );
+}
+
 function Timeline({ result }: { result: PipelineResult }) {
   const { versions, policy } = useStore();
   const newestFirst = useMemo(() => [...versions].reverse(), [versions]);
@@ -174,6 +203,8 @@ function Timeline({ result }: { result: PipelineResult }) {
       {versions.length > 1 ? (
         <Compare versions={versions} result={result} policy={policy} />
       ) : null}
+
+      <UndoChange />
 
       <Card>
         <CardHeader title="History" subtitle="Newest first." />

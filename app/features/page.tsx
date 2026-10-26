@@ -55,7 +55,7 @@ export default function FeaturesPage() {
         </Banner>
 
         {safeMode ? (
-          <Banner tone="warn" title="Safe mode is on, so AI and the map stay off">
+          <Banner tone="warn" title="Safe mode is on, so the AI switches stay off">
             Leave safe mode by opening the app without <code>?safe=1</code>.
           </Banner>
         ) : null}
@@ -98,7 +98,7 @@ export default function FeaturesPage() {
                 onChange={() => toggleFlag(key)}
                 title={FEATURE_LABELS[key].title}
                 help={FEATURE_LABELS[key].help}
-                disabled={safeMode && (key === "aiExplanations" || key === "aiContradictionCheck" || key === "map")}
+                disabled={safeMode && (key === "aiExplanations" || key === "aiContradictionCheck")}
                 disabledReason="Held off by safe mode."
               />
             ))}
