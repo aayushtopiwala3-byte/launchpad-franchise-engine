@@ -4,6 +4,8 @@ Upload the Applications and Territories workbook. Get back a decision for every 
 the reason in one sentence, the rule trace behind it, an onboarding plan, and an Excel file
 you can hand to a franchise owner.
 
+**Live, no login: https://launchpad-franchise-engine.vercel.app**
+
 Built for Ops Hackathon Case 1 by **Aayush Topiwala** and **Durgesh Panchal**.
 
 ---
@@ -31,7 +33,7 @@ npm install
 npm run dev      # http://localhost:3000
 ```
 
-Click **Load sample data** on the home page — 28 applications across 6 territories, with the
+Click **Load sample data** on the home page — 28 applications across 8 territories, with the
 awkward rows (a duplicate, a pin claimed by an existing store, a blank investment field)
 deliberately left in.
 
