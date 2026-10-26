@@ -21,13 +21,18 @@ after it. The suite went from 321 tests across 18 files to **540 across 28** —
 in 10 new adversarial files, plus one added to `determinism.test.ts`, all of them
 adversarial rather than confirmatory.
 
-**Deployed commit: `8cb9699`.** The condition stated in the first draft of this report — that
-the live site still ran the pre-audit commit `1ff8042` with none of the fixes — has been
-discharged. `89a276b` (seven fixes) and `8cb9699` (D-8) are on `main`, the Vercel production
-deployment `dpl_Gqq3UatKKtUtyDEgG3Ta9LjPyCSP` reports `meta.githubCommitSha = 8cb9699…`, and
-the public alias resolves to it. The fixes were then confirmed by exercising the live site,
-not by inferring from a build log. D-8 was itself found *by* that production testing, after
-the first deploy — it is the reason this report has eight defects rather than seven.
+**Verified application build: `8cb9699`.** The condition stated in the first draft of this
+report — that the live site still ran the pre-audit commit `1ff8042` with none of the fixes —
+has been discharged. `89a276b` (seven fixes) and `8cb9699` (D-8) are on `main`, the Vercel
+production deployment reported `meta.githubCommitSha = 8cb9699…`, and the public alias
+resolved to it. The fixes were then confirmed by exercising the live site, not by inferring
+from a build log. D-8 was itself found *by* that production testing, after the first deploy —
+it is the reason this report has eight defects rather than seven.
+
+Commits on `main` after `8cb9699` touch this file only — `git diff 8cb9699 HEAD -- app lib
+components` is empty — so the deployed application code stays byte-identical to the build the
+run below was performed against. Each such commit does redeploy, and the alias was
+re-fingerprinted afterwards: post-fix strings present, pre-fix strings absent.
 
 ### Top five risks
 
