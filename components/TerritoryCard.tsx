@@ -44,6 +44,12 @@ export function TerritoryCard({ territory }: { territory: Territory }) {
   const t = territory;
   const approvals = t.queue.filter((q) => q.status === "APPROVED").length;
 
+  // occupiedPins is the pre-allocation list and counts existing stores only; allocation
+  // then writes every claim — store, approved applicant and reservation — into pinHolders.
+  // Reading occupiedPins here hid approved applicants, so a full territory could report
+  // "nothing is holding a pin here yet" beside its own filled slots.
+  const heldPins = t.pins.filter((p) => !t.cededPins.includes(p) && t.pinHolders[p]);
+
   return (
     <Card>
       <CardHeader
@@ -89,7 +95,7 @@ export function TerritoryCard({ territory }: { territory: Territory }) {
           </div>
           <div>
             <div className="text-xs text-muted">Occupied pins</div>
-            <div className="text-lg font-semibold tabular-nums">{t.occupiedPins.length}</div>
+            <div className="text-lg font-semibold tabular-nums">{heldPins.length}</div>
           </div>
         </div>
 
@@ -109,7 +115,7 @@ export function TerritoryCard({ territory }: { territory: Territory }) {
             Occupied pins — and who holds them
           </div>
           <PinList
-            pins={t.occupiedPins}
+            pins={heldPins}
             holders={t.pinHolders}
             empty="Nothing is holding a pin here yet."
           />

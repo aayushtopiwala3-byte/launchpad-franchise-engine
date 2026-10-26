@@ -272,6 +272,10 @@ export interface Territory {
   cededPins: string[];
   openSlots: number | null;
   priority: Priority | null;
+  /**
+   * Existing stores only, fixed before allocation runs — it is the input to capacity, not
+   * a record of who ended up holding what. For display, read pinHolders instead.
+   */
   occupiedPins: string[];
   freePins: string[];
   usableCapacity: number;

@@ -282,3 +282,59 @@ describe("allocation totals always reconcile", () => {
     expect(result.applicants.every((a) => a.status.length > 0)).toBe(true);
   });
 });
+
+/**
+ * D-8. The territory card answers "who holds this pin?", and it used to answer from
+ * occupiedPins — which is fixed before allocation and counts existing stores only. A
+ * territory whose slots were all taken by applicants therefore reported holding nothing
+ * while showing its slots full. The engine was right throughout: pinHolders carried every
+ * claim. These pin the two properties the card now reads, in the layer that can be tested.
+ */
+describe("every claimed pin names its holder", () => {
+  it("records an approved applicant in pinHolders, not only in the queue", () => {
+    const result = run(
+      [
+        appRow({ applicationId: "APP-970", pinCode: "570002" }),
+        appRow({ applicationId: "APP-971", pinCode: "570003" }),
+      ],
+      [terRow({ territoryId: "TER-01", pinCodesCovered: "570002, 570003, 570004", openSlots: "2" })],
+    );
+
+    const t = result.territories.find((x) => x.territoryId === "TER-01")!;
+
+    // Exactly the shape the old card missed: no existing store here, so occupiedPins is
+    // empty while two pins are genuinely spoken for.
+    expect(t.occupiedPins).toEqual([]);
+    expect(Object.keys(t.pinHolders).sort()).toEqual(["570002", "570003"]);
+    expect(t.pinHolders["570002"]).toEqual({ kind: "approved", id: "APP-970" });
+    expect(t.pinHolders["570003"]).toEqual({ kind: "approved", id: "APP-971" });
+  });
+
+  it("accounts for every usable pin as either free or held, never as neither", () => {
+    const result = run(
+      [
+        appRow({ applicationId: "APP-972", pinCode: "570002" }),
+        appRow({ applicationId: "APP-973", pinCode: "570003" }),
+      ],
+      [terRow({ territoryId: "TER-01", pinCodesCovered: "570002, 570003, 570004", openSlots: "2" })],
+    );
+
+    for (const t of result.territories) {
+      const usable = t.pins.filter((p) => !t.cededPins.includes(p));
+      const held = usable.filter((p) => t.pinHolders[p]);
+      expect(new Set([...held, ...t.freePins]).size).toBe(usable.length);
+      expect(held.filter((p) => t.freePins.includes(p))).toEqual([]);
+    }
+  });
+
+  it("names the existing store holding a pin, and refuses the applicant who wanted it", () => {
+    const result = run(
+      [appRow({ applicationId: "APP-974", city: "Bengaluru", pinCode: "560034" })],
+      [terRow({ territoryId: "TER-01", city: "Bengaluru", pinCodesCovered: "560001, 560034", openSlots: "2" })],
+    );
+
+    const t = result.territories.find((x) => x.territoryId === "TER-01")!;
+    expect(t.pinHolders["560034"]).toEqual({ kind: "store", id: "ST-02" });
+    expect(statusOf(result, "APP-974")).not.toBe("APPROVED");
+  });
+});
