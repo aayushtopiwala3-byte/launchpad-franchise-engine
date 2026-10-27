@@ -8,6 +8,7 @@ import { downloadRecovery } from "../../lib/state/persistence";
 import { useStore } from "../../lib/state/store";
 import { Banner, Button, cn } from "../ui/primitives";
 import { HealthStrip } from "./HealthStrip";
+import { RoleSwitcher } from "./RoleSwitcher";
 
 const NAV = [
   { href: "/dashboard", label: "Command Centre" },
@@ -51,7 +52,8 @@ function ActiveNav() {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const store = useStore();
-  const { policy, result, safeMode, rollbackBanner, corruptPayload, aiDegraded } = store;
+  const { policy, result, safeMode, rollbackBanner, corruptPayload, aiDegraded, lastDenial } =
+    store;
   const differences = policyDifferences(policy);
 
   return (
@@ -75,6 +77,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <ActiveNav />
             </Suspense>
           </div>
+          <RoleSwitcher />
           <HealthStrip />
         </div>
       </header>
@@ -91,6 +94,21 @@ export function AppShell({ children }: { children: ReactNode }) {
             }
           >
             {rollbackBanner}
+          </Banner>
+        ) : null}
+
+        {lastDenial ? (
+          <Banner
+            tone="warn"
+            title="That change was refused, and nothing was written"
+            action={
+              <Button size="sm" variant="secondary" onClick={store.dismissDenial}>
+                Dismiss
+              </Button>
+            }
+          >
+            {lastDenial} The refusal happened where the data is written, so the record is
+            untouched — see Settings for what each role may do and why this is not a login.
           </Banner>
         ) : null}
 

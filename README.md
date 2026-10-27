@@ -50,7 +50,7 @@ deliberately left in.
 No API key is needed. Every AI touchpoint has a deterministic fallback.
 
 ```bash
-npm test         # 606 tests
+npm test         # 669 tests
 npm run typecheck
 npm run build
 ```
@@ -145,7 +145,7 @@ flowchart TD
 | Route | What it answers |
 | --- | --- |
 | `/` | Load a workbook, the sample, or a blank template |
-| `/dashboard` | How many approved, waitlisted, held — and the export button |
+| `/dashboard` | How many approved, waitlisted, held — and the export button. Nine filters narrow one set that every card, the funnel and every panel are computed from, so a card and the list it links to can never disagree |
 | `/applicants` | Every row with its one-line reason, filterable |
 | `/applicants/[id]` | The full rule trace, score breakdown, onboarding plan, partner message |
 | `/territories` | Capacity, pins held, pins free, why a slot is still empty |
@@ -157,7 +157,7 @@ flowchart TD
 | `/features` | The switches — including explain mode and AI on/off |
 | `/system` | Health, the AI cost ledger, the full event log |
 | `/partner/[token]` | A read-only view an applicant can be sent |
-| `/acquisition` | Leads before they apply: workload, stages, follow-ups now due |
+| `/acquisition` | Leads before they apply: workload, stages, follow-ups now due. Sortable on seven columns, and a pipeline board that refuses a move it cannot honestly make |
 | `/acquisition/[leadId]` | One conversation — history, AI qualification, outreach drafts, handover |
 | `/onboarding` | Every approved partner's journey, ranked by who is blocking it |
 | `/onboarding/[id]` | One journey: ten weighted milestones, tasks, documents, launch readiness |
@@ -177,6 +177,26 @@ Two exports of the same run produce byte-identical files — pinned by a test.
 and the same as-of date always produce the same hash, on any machine. The engine never reads
 `Date.now()`; the as-of date is an explicit input.
 
+## Roles, and what the role control is not
+
+Two roles share the same data: **Expansion team** runs the pipeline, the policy and the
+acquisition desk; **Franchise partner** records their own onboarding and nothing else. A
+partner may submit a proposed correction to their application — asking is not deciding — but
+only the expansion side can answer it.
+
+The check runs in the reducer, ahead of every case, because that is the only path by which
+any of this state changes. Refusing a write there rather than hiding a button is what makes
+the rule a rule: `tests/state/access.test.ts` asserts the mapping covers all seventeen kinds
+of mutating action, and a refusal says in words that nothing was written.
+
+**This is not authentication.** There is no login, no server and no identity provider in this
+build. The role is a value in this browser — anyone who can open the page can change it, just
+as they could edit the stored JSON directly. What it does buy is that a mistaken click in the
+wrong workspace cannot alter a record that workspace does not own. What it does not buy is
+protection from someone who wants to get around it. Production use needs a real identity
+provider and a server that re-checks every write. The app says this on `/policy` rather than
+letting the control imply a boundary it does not have.
+
 ## Layout
 
 ```
@@ -186,9 +206,9 @@ lib/engine/    the decision rules — pure, no I/O
 lib/ai/        the narrow AI jobs, each with a deterministic fallback
 lib/parse/     workbook reading and column matching
 lib/export/    the six-sheet .xlsx builder
-lib/state/     store, versions, persistence, policy
-lib/command/   command-centre arithmetic — KPIs, funnel, bottlenecks
-lib/crm/       lead logic — validation, duplicates, handover to an application
+lib/state/     store, versions, persistence, policy, and the capability model
+lib/command/   command-centre arithmetic — KPIs, funnel, bottlenecks, and the filter scope
+lib/crm/       lead logic — validation, duplicates, sorting, the pipeline board, handover
 lib/onboarding/ the ten milestones, their tasks and documents, and the derived journey
-tests/         606 tests across 31 files
+tests/         669 tests across 34 files
 ```

@@ -27,6 +27,7 @@ import {
   territorySnapshots,
   type MetricsInput,
 } from "../../lib/command/metrics";
+import { scopeDashboard, type Scope } from "../../lib/command/scope";
 import { useFilters } from "../../lib/state/filters";
 import { useOnboardingRecords } from "../../lib/state/derive";
 import { useStore } from "../../lib/state/store";
@@ -59,8 +60,7 @@ export default function Dashboard() {
             processedMs={parseReport?.processedMs ?? null}
             policyName={policy.name}
             statusLabels={policy.statusLabels}
-            city={filters.city}
-            territoryId={filters.territoryId}
+            scope={filters}
           />
         )}
       </RequireData>
@@ -78,8 +78,7 @@ function Body({
   processedMs,
   policyName,
   statusLabels,
-  city,
-  territoryId,
+  scope,
 }: {
   result: PipelineResult;
   records: ReturnType<typeof useOnboardingRecords>;
@@ -90,27 +89,15 @@ function Body({
   processedMs: number | null;
   policyName: string;
   statusLabels: Record<Status, string>;
-  city: string | null;
-  territoryId: string | null;
+  scope: Scope;
 }) {
-  const journeys = useMemo(() => records.map((r) => r.view), [records]);
-
-  // The city and territory pickers narrow what the territory table and the funnel describe.
-  // They never narrow a decision — the engine already decided every applicant, and filtering
-  // a view does not un-decide anyone.
-  const territories = useMemo(
-    () =>
-      result.territories.filter(
-        (t) =>
-          (!city || t.city === city) && (!territoryId || t.territoryId === territoryId),
-      ),
-    [result.territories, city, territoryId],
+  // One narrowed set feeds every panel below. A card and the list it links to are computed
+  // from the same arrays, so a filter cannot leave them disagreeing.
+  const scoped = useMemo(
+    () => scopeDashboard({ result, leads, records, pendingUpdates }, scope),
+    [result, leads, records, pendingUpdates, scope],
   );
-
-  const input: MetricsInput = useMemo(
-    () => ({ result, leads, journeys, pendingUpdates }),
-    [result, leads, journeys, pendingUpdates],
-  );
+  const { input, territories } = scoped;
 
   const metrics = useMemo(() => buildMetrics(input), [input]);
   const funnel = useMemo(() => buildFunnel(input), [input]);
@@ -124,6 +111,8 @@ function Body({
       }),
     [input, asOfDate, result.applicants],
   );
+  // The counts chips at the foot of the page read the narrowed set too.
+  const counts = input.result.counts;
   const snapshots = useMemo(() => territorySnapshots(territories), [territories]);
 
   return (
@@ -136,7 +125,22 @@ function Body({
         policyName={policyName}
       />
 
-      <FilterBar facets={["city", "territory"]} />
+      <FilterBar
+        facets={[
+          "query",
+          "city",
+          "territory",
+          "status",
+          "leadStage",
+          "onboardingStage",
+          "owner",
+          "priority",
+          "dates",
+        ]}
+        searchPlaceholder="Search applications, leads and partners…"
+      />
+
+      <ScopeNotice scoped={scoped} />
 
       <KpiGrid metrics={metrics} />
 
@@ -210,13 +214,51 @@ function Body({
           {STATUS_ORDER.map((status) => (
             <span key={status} className="flex items-center gap-1.5 text-sm">
               <StatusChip status={status} label={statusLabels[status]} />
-              <span className="tabular-nums text-muted">{result.counts[status]}</span>
+              <span className="tabular-nums text-muted">{counts[status]}</span>
             </span>
           ))}
         </div>
       </Card>
 
       <ProcessingPanel />
+    </div>
+  );
+}
+
+/**
+ * Says out loud that the page is narrowed, how much each collection lost, and which facets
+ * could not narrow a collection at all. A filter that silently applied to nothing is the
+ * quickest way to make someone trust a number that does not mean what they think.
+ */
+function ScopeNotice({ scoped }: { scoped: ReturnType<typeof scopeDashboard> }) {
+  if (!scoped.isNarrowed) return null;
+  const { removed, notes } = scoped;
+  const say = (n: number, one: string, many: string) =>
+    n === 0 ? null : `${n} ${n === 1 ? one : many}`;
+  const parts = [
+    say(removed.applicants, "application", "applications"),
+    say(removed.leads, "lead", "leads"),
+    say(removed.journeys, "journey", "journeys"),
+    say(removed.territories, "territory", "territories"),
+  ].filter((p): p is string => p !== null);
+
+  return (
+    <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm">
+      <p className="font-medium text-amber-900">
+        Filtered view. Every number below describes the narrowed set, not the whole dataset.
+      </p>
+      <p className="mt-1 text-amber-900/80">
+        {parts.length === 0
+          ? "Nothing was removed — the filters match everything loaded."
+          : `Hidden by the filters: ${parts.join(", ")}.`}
+      </p>
+      {notes.length > 0 ? (
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-900/80">
+          {notes.map((n) => (
+            <li key={n}>{n}</li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }

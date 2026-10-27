@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { AppShell } from "../../components/shell/AppShell";
+import { AccessPanel } from "../../components/shell/RoleSwitcher";
 import { Banner, Button, Card, CardHeader, cn } from "../../components/ui/primitives";
 import { BRAND_DEFAULT_POLICY } from "../../lib/reference";
 import { policyDifferences, previewPolicyImpact } from "../../lib/state/policy";
@@ -312,6 +313,14 @@ export default function PolicyPage() {
             </Card>
           </div>
         </div>
+
+        <Card>
+          <CardHeader
+            title="Roles and what each one may write"
+            subtitle="Enforced where the data is written, not by hiding controls."
+          />
+          <AccessPanel />
+        </Card>
 
         {fromBrand.length > 0 && changes.length === 0 ? (
           <Banner tone="info" title="This profile differs from the brand default">

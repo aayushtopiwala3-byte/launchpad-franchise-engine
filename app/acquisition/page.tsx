@@ -8,6 +8,7 @@ import Link from "next/link";
 import { Suspense, useMemo, useState } from "react";
 import { AppShell } from "../../components/shell/AppShell";
 import { FilterBar } from "../../components/command/FilterBar";
+import { LeadBoard } from "../../components/crm/LeadBoard";
 import { NewLeadForm } from "../../components/crm/NewLeadForm";
 import {
   Button,
@@ -18,6 +19,14 @@ import {
   NotStated,
   cn,
 } from "../../components/ui/primitives";
+import {
+  SORT_BASIS,
+  SORT_LABELS,
+  nextSort,
+  sortLeads,
+  type Sort,
+  type SortKey,
+} from "../../lib/crm/board";
 import { followUpState, isOpen, stageCounts, workload } from "../../lib/crm/leads";
 import type { Lead } from "../../lib/crm/types";
 import { useFirstPaint } from "../../lib/state/firstPaint";
@@ -49,6 +58,8 @@ function Body() {
     useStore();
   const { filters } = useFilters();
   const [adding, setAdding] = useState(false);
+  const [view, setView] = useState<"table" | "board">("table");
+  const [sort, setSort] = useState<Sort>({ key: "followUp", direction: "asc" });
 
   const painted = useFirstPaint();
 
@@ -70,6 +81,8 @@ function Body() {
       return true;
     });
   }, [leads, filters]);
+
+  const ordered = useMemo(() => sortLeads(visible, sort), [visible, sort]);
 
   const load = useMemo(() => workload(leads, today), [leads, today]);
   const counts = useMemo(() => stageCounts(leads), [leads]);
@@ -146,6 +159,26 @@ function Body() {
           <CardHeader
             title={`Leads (${visible.length} of ${leads.length})`}
             subtitle="Open the lead to log a call, draft outreach or prepare an application handover."
+            action={
+              <div className="flex items-center gap-1" role="group" aria-label="Lead view">
+                <Button
+                  size="sm"
+                  variant={view === "table" ? "secondary" : "ghost"}
+                  aria-pressed={view === "table"}
+                  onClick={() => setView("table")}
+                >
+                  Table
+                </Button>
+                <Button
+                  size="sm"
+                  variant={view === "board" ? "secondary" : "ghost"}
+                  aria-pressed={view === "board"}
+                  onClick={() => setView("board")}
+                >
+                  Pipeline
+                </Button>
+              </div>
+            }
           />
           {visible.length === 0 ? (
             <EmptyState
@@ -156,22 +189,38 @@ function Body() {
                   : "Every recorded lead is filtered out by the current selection."
               }
             />
+          ) : view === "board" ? (
+            <div className="px-4 py-3">
+              <LeadBoard leads={visible} asOfDate={today} />
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="border-b border-line text-left text-xs text-muted">
                   <tr>
-                    <th className="px-4 py-2 font-medium">Lead</th>
-                    <th className="px-2 py-2 font-medium">City</th>
-                    <th className="px-2 py-2 font-medium">Stage</th>
-                    <th className="px-2 py-2 font-medium">Owner</th>
-                    <th className="px-2 py-2 font-medium">Investment stated</th>
-                    <th className="px-2 py-2 font-medium">Site</th>
-                    <th className="px-4 py-2 font-medium">Next follow-up</th>
+                    {(
+                      [
+                        ["name", "px-4"],
+                        ["city", "px-2"],
+                        ["stage", "px-2"],
+                        ["owner", "px-2"],
+                        ["investment", "px-2"],
+                        ["site", "px-2"],
+                        ["followUp", "px-4"],
+                      ] as [SortKey, string][]
+                    ).map(([key, pad]) => (
+                      <SortHeader
+                        key={key}
+                        sortKey={key}
+                        pad={pad}
+                        sort={sort}
+                        onSort={() => setSort((s) => nextSort(s, key))}
+                      />
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
-                  {visible.map((l) => {
+                  {ordered.map((l) => {
                     const fu = followUpState(l, today);
                     return (
                       <tr
@@ -213,10 +262,52 @@ function Body() {
           <p className="border-t border-line px-4 py-2 text-xs text-muted">
             Follow-up state is measured against {today}, the same as-of date every decision on
             this site uses — not against the clock on your machine.
+            {view === "table" ? ` Sorted by ${SORT_LABELS[sort.key]}: ${SORT_BASIS[sort.key]}` : null}
           </p>
         </Card>
       </div>
     </>
+  );
+}
+
+/**
+ * `aria-sort` is what makes a sortable column a sortable column to a screen reader; an arrow
+ * glyph alone is decoration. The basis for the ordering rides along as the title so nobody has
+ * to guess what "Investment stated, ascending" is actually comparing.
+ */
+function SortHeader({
+  sortKey,
+  pad,
+  sort,
+  onSort,
+}: {
+  sortKey: SortKey;
+  pad: string;
+  sort: Sort;
+  onSort: () => void;
+}) {
+  const active = sort.key === sortKey;
+  return (
+    <th
+      scope="col"
+      className={`${pad} py-2 font-medium`}
+      aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <button
+        type="button"
+        onClick={onSort}
+        title={SORT_BASIS[sortKey]}
+        className={cn(
+          "inline-flex items-center gap-1 rounded transition-colors duration-150 hover:text-foreground",
+          active && "font-semibold text-foreground",
+        )}
+      >
+        {SORT_LABELS[sortKey]}
+        <span aria-hidden className={cn("text-[10px]", !active && "opacity-30")}>
+          {active && sort.direction === "desc" ? "▼" : "▲"}
+        </span>
+      </button>
+    </th>
   );
 }
 

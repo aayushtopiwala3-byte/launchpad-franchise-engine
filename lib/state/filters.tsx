@@ -35,8 +35,10 @@ export const EMPTY_FILTERS: Filters = {
 };
 
 export function activeFilterCount(f: Filters): number {
+  // Whitespace is not a search: the pages trim the query before using it, so a Reset button
+  // reading "(1)" for a stray space would be counting a filter that removed nothing.
   return Object.entries(f).filter(([k, v]) =>
-    k === "query" ? v !== "" : v !== null,
+    k === "query" ? String(v).trim() !== "" : v !== null,
   ).length;
 }
 

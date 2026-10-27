@@ -8,6 +8,7 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import type { AiCallRecord } from "../ai/client";
@@ -19,6 +20,7 @@ import type { Lead, LeadInteraction, LeadStage, OutreachDraft } from "../crm/typ
 import { DOCUMENT_BY_ID, TASK_BY_ID } from "../onboarding/config";
 import { DEMO_APPLICATION_ID, seedDemoProgress } from "../onboarding/demo";
 import { canActorCompleteTask, emptyProgress } from "../onboarding/journey";
+import { DEFAULT_ROLE, can, guardAction, type Capability, type Role } from "./access";
 import type {
   ActivityEntry,
   Actor,
@@ -97,6 +99,11 @@ export interface AppState {
   safeMode: boolean;
   hydrated: boolean;
   busy: string | null;
+
+  /** Which workspace this browser is acting as. Deliberately not persisted — see access.ts. */
+  role: Role;
+  /** The last write the current role was not allowed to make, so the page can say so. */
+  lastDenial: string | null;
 }
 
 const INITIAL: AppState = {
@@ -129,6 +136,8 @@ const INITIAL: AppState = {
   safeMode: false,
   hydrated: false,
   busy: null,
+  role: DEFAULT_ROLE,
+  lastDenial: null,
 };
 
 type Action =
@@ -160,6 +169,8 @@ type Action =
   | { type: "journey:siteNotes"; applicationId: string; notes: string; activity: ActivityEntry }
   | { type: "demo:seed"; leads: Lead[]; progress: JourneyProgress }
   | { type: "demo:clear" }
+  | { type: "role"; role: Role }
+  | { type: "dismissDenial" }
   | { type: "reset" };
 
 /** Progress is created on first touch, so a journey never has to be opened to exist. */
@@ -178,9 +189,18 @@ function withProgress(
 }
 
 function reducer(state: AppState, action: Action): AppState {
+  // The access check sits here, ahead of every case, because this is the only path by which
+  // any of this state changes. A control hidden in a component is not a boundary.
+  const denied = guardAction(state.role, action.type);
+  if (denied) return { ...state, lastDenial: denied };
+
   switch (action.type) {
     case "hydrate":
       return { ...state, ...action.patch, hydrated: true };
+    case "role":
+      return { ...state, role: action.role, lastDenial: null };
+    case "dismissDenial":
+      return { ...state, lastDenial: null };
     case "busy":
       return { ...state, busy: action.label };
     case "dataset":
@@ -380,6 +400,11 @@ export interface StoreValue extends AppState {
   reset: () => void;
   dismissRollback: () => void;
   corruptPayloadDownloadable: string | null;
+
+  setRole: (role: Role) => void;
+  dismissDenial: () => void;
+  /** True when the current role may make that kind of write. Enforced in the reducer too. */
+  may: (capability: Capability) => boolean;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -404,12 +429,25 @@ function ceiling(): number {
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL);
+
+  // The callbacks below are built once and must still see the newest state when they run.
+  // The write happens in an effect rather than during render: nothing can call a callback
+  // between a render and the effect that follows it, so there is no window to read a stale
+  // value through, and React is not asked to mutate anything mid-render.
+  //
+  // This effect is first in the file on purpose — effects run top to bottom, so the hydration
+  // effect below already sees the current state through the ref.
   const stateRef = useRef(state);
-  stateRef.current = state;
+  useEffect(() => {
+    stateRef.current = state;
+  });
+
   // Kept in memory only, so the example-row toggle can re-read the same workbook.
   const uploadRef = useRef<{ buffer: ArrayBuffer; fileName: string } | null>(null);
-  // One ledger per session. Shared by every AI caller so the ceiling is a single budget.
-  const ledgerRef = useRef(new CostLedger(ceiling()));
+  // One ledger per session, shared by every AI caller so the ceiling is a single budget.
+  // Held in state rather than a ref because the context value is read during render: the
+  // initialiser runs once, so the instance is as stable as a ref and legible to React.
+  const [ledger] = useState(() => new CostLedger(ceiling()));
   // The latest AI labels. Every re-run reuses them, so a patch does not re-spend.
   const enrichmentRef = useRef<AiEnrichment>(EMPTY_ENRICHMENT);
   // Guards against two enrichment passes racing after a fast second upload.
@@ -664,7 +702,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         input.applications,
         { classify: aiExplanations, contradictions: aiContradictionCheck },
         {
-          ledger: ledgerRef.current,
+          ledger,
           onCall: (call) => {
             dispatch({ type: "cost", entry: costEntry(call) });
             if (!call.ok) {
@@ -681,7 +719,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (run !== enrichRunRef.current) return;
 
       enrichmentRef.current = enrichment;
-      const spent = ledgerRef.current.totalUsd;
+      const spent = ledger.totalUsd;
       const got = enrichment.attempted - enrichment.failed;
       const level = enrichment.failed === 0 ? "green" : "amber";
       const detail =
@@ -700,7 +738,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         publish(input, asOfDate, stateRef.current.policy, "ai-enrichment", [], detail);
       }
     },
-    [publish],
+    [publish, ledger],
   );
 
   // A dataset restored on a hard refresh needs its AI pass back. Every call is a cache
@@ -968,7 +1006,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "demo:seed", leads: seedDemoLeads(date), progress: seedDemoProgress(date) });
       },
 
-      ledger: ledgerRef.current,
+      ledger,
       recordCost: (entry) => dispatch({ type: "cost", entry }),
       setHealth: (patch) => dispatch({ type: "health", patch }),
       log: (entry) => dispatch({ type: "log", entry }),
@@ -978,8 +1016,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       dismissRollback: () => dispatch({ type: "dismissRollback" }),
       corruptPayloadDownloadable: state.corruptPayload,
+
+      setRole: (role) => dispatch({ type: "role", role }),
+      dismissDenial: () => dispatch({ type: "dismissDenial" }),
+      may: (capability) => can(state.role, capability),
     }),
-    [state, loadSample, loadFile, setIncludeExampleRow, applyPatches, undo, applyPolicy],
+    [
+      state,
+      ledger,
+      loadSample,
+      loadFile,
+      setIncludeExampleRow,
+      applyPatches,
+      undo,
+      applyPolicy,
+      resolvePendingUpdate,
+    ],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
