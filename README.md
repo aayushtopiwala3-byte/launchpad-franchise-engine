@@ -4,6 +4,10 @@ Upload the Applications and Territories workbook. Get back a decision for every 
 the reason in one sentence, the rule trace behind it, an onboarding plan, and an Excel file
 you can hand to a franchise owner.
 
+Around that engine sit three workspaces: a **Command Centre** for the expansion head, a
+**Partner Acquisition** desk for the leads who have not applied yet, and an **Onboarding &
+Launch** tracker for the partners who were approved. None of them can move a verdict.
+
 **Live, no login: https://launchpad-franchise-engine.vercel.app**
 
 Built for Ops Hackathon Case 1 by **Aayush Topiwala** and **Durgesh Panchal**.
@@ -26,6 +30,12 @@ Three rules follow from it:
 | **A display switch never moves a verdict** | Explain mode, language and AI toggles are annotation only. `tests/acceptance/switches.test.ts` runs the whole pipeline with every switch on and every switch off and asserts the statuses are identical. |
 | **A verdict is never changed quietly** | Every recompute writes a version with a snapshot and a diff. The timeline names exactly which applicants moved, including the ones who only lost a rank. |
 
+The workspaces inherit it. A lead's stage records how far a conversation has got and
+assesses nobody; a journey stores only completed tasks and document states, and every
+milestone status, percentage and launch verdict is derived from those two, so there is no
+second status to drift. A partner who finishes every task of their own reads *Awaiting
+brand authorisation* — completing a personal checklist is not permission to open a store.
+
 ## Run it
 
 ```bash
@@ -40,7 +50,7 @@ deliberately left in.
 No API key is needed. Every AI touchpoint has a deterministic fallback.
 
 ```bash
-npm test         # 318 tests
+npm test         # 606 tests
 npm run typecheck
 npm run build
 ```
@@ -111,7 +121,7 @@ flowchart TD
     end
 
     subgraph Out [Output]
-        UI[13 screens]
+        UI[18 screens]
         XOUT[lib/export/workbook.ts<br/>6-sheet .xlsx]
     end
 
@@ -147,6 +157,11 @@ flowchart TD
 | `/features` | The switches — including explain mode and AI on/off |
 | `/system` | Health, the AI cost ledger, the full event log |
 | `/partner/[token]` | A read-only view an applicant can be sent |
+| `/acquisition` | Leads before they apply: workload, stages, follow-ups now due |
+| `/acquisition/[leadId]` | One conversation — history, AI qualification, outreach drafts, handover |
+| `/onboarding` | Every approved partner's journey, ranked by who is blocking it |
+| `/onboarding/[id]` | One journey: ten weighted milestones, tasks, documents, launch readiness |
+| `/owner` | The franchise owner's own portal, reachable in one click from the dashboard |
 
 ## The export
 
@@ -165,12 +180,15 @@ and the same as-of date always produce the same hash, on any machine. The engine
 ## Layout
 
 ```
-app/          screens and the single /api/ai route
-components/   UI, decision cards, shell
-lib/engine/   the decision rules — pure, no I/O
-lib/ai/       the four narrow AI jobs, each with a fallback
-lib/parse/    workbook reading and column matching
-lib/export/   the six-sheet .xlsx builder
-lib/state/    store, versions, persistence, policy
-tests/        318 tests across 18 files
+app/           screens and the single /api/ai route
+components/    UI, decision cards, shell, the three workspaces
+lib/engine/    the decision rules — pure, no I/O
+lib/ai/        the narrow AI jobs, each with a deterministic fallback
+lib/parse/     workbook reading and column matching
+lib/export/    the six-sheet .xlsx builder
+lib/state/     store, versions, persistence, policy
+lib/command/   command-centre arithmetic — KPIs, funnel, bottlenecks
+lib/crm/       lead logic — validation, duplicates, handover to an application
+lib/onboarding/ the ten milestones, their tasks and documents, and the derived journey
+tests/         606 tests across 31 files
 ```
