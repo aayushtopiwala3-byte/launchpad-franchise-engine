@@ -2,7 +2,12 @@ import type { ZodType } from "zod";
 import { ACTIVE_MODEL, MODEL_FALLBACKS, assertFlashModel } from "./model";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
-const TIMEOUT_MS = 8000;
+
+/**
+ * Enough for a label or a routing decision, which is all the original four calls ask for.
+ * The calls that write prose need considerably longer — see `timeoutMs` below.
+ */
+const DEFAULT_TIMEOUT_MS = 8000;
 
 export interface GeminiCall<T> {
   system: string;
@@ -10,6 +15,12 @@ export interface GeminiCall<T> {
   schema: ZodType<T>;
   /** Gemini's own JSON schema, so the model is constrained rather than merely asked. */
   responseSchema: Record<string, unknown>;
+  /**
+   * How long to wait. A one-word classification and a ten-field written brief are not the
+   * same job, and holding both to one deadline means the longer one fails for no reason
+   * other than that it is longer.
+   */
+  timeoutMs?: number;
 }
 
 export interface GeminiSuccess<T> {
@@ -44,9 +55,10 @@ async function once(
   system: string,
   user: string,
   responseSchema: Record<string, unknown>,
+  timeoutMs: number,
 ): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(`${ENDPOINT}/${model}:generateContent?key=${apiKey}`, {
       method: "POST",
@@ -88,20 +100,23 @@ export async function callGemini<T>(
   call: GeminiCall<T>,
 ): Promise<GeminiResult<T>> {
   const models = [ACTIVE_MODEL, ...MODEL_FALLBACKS];
+  const timeoutMs = call.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   let inputTokens = 0;
   let outputTokens = 0;
   let attempts = 0;
-  let lastReason = "No attempt was made.";
   let model = ACTIVE_MODEL;
+  // Every model's own reason, so a dead fallback cannot mask why the primary one failed.
+  const reasons: string[] = [];
 
   for (const candidate of models) {
     model = assertFlashModel(candidate);
     let user = call.user;
+    let lastReason = "No attempt was made.";
 
     for (let attempt = 0; attempt < 2; attempt++) {
       attempts++;
       try {
-        const raw = await once(model, apiKey, call.system, user, call.responseSchema);
+        const raw = await once(model, apiKey, call.system, user, call.responseSchema, timeoutMs);
         inputTokens += raw.inputTokens;
         outputTokens += raw.outputTokens;
 
@@ -122,12 +137,14 @@ export async function callGemini<T>(
         user = `${call.user}\n\nYour previous reply failed validation: ${lastReason}\nReturn JSON matching the schema exactly.`;
       } catch (err) {
         const aborted = err instanceof Error && err.name === "AbortError";
-        lastReason = aborted ? `Timed out after ${TIMEOUT_MS} ms.` : String(err);
+        lastReason = aborted ? `Timed out after ${timeoutMs} ms.` : String(err);
         // A timeout or transport error will not be fixed by rewording the prompt.
         break;
       }
     }
+
+    reasons.push(`${model}: ${lastReason}`);
   }
 
-  return { ok: false, reason: lastReason, model, inputTokens, outputTokens, attempts };
+  return { ok: false, reason: reasons.join(" | "), model, inputTokens, outputTokens, attempts };
 }

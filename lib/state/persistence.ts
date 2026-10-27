@@ -1,3 +1,5 @@
+import type { Lead, OutreachDraft } from "../crm/types";
+import type { JourneyProgress } from "../onboarding/types";
 import type {
   FeatureFlags,
   Feedback,
@@ -32,7 +34,29 @@ export interface PersistedState {
    * verdict change quietly, which is the one thing the timeline exists to prevent.
    */
   versions: Version[];
+
+  // Phase 2 slices. Optional, and the schema version deliberately stays at 1: `load()`
+  // treats any other version as corrupt, so bumping it would make every session saved
+  // before this release read as unrecoverable. Absent fields default to empty on read.
+  leads?: Lead[];
+  outreachDrafts?: OutreachDraft[];
+  journeyProgress?: Record<string, JourneyProgress>;
+  /** Set once the illustrative records have been added, so clearing them is respected. */
+  demoSeeded?: boolean;
 }
+
+/**
+ * What this storage is, stated plainly because the product claims it in the UI: one browser,
+ * one profile, no server. There is no synchronisation, no authentication and no shared view.
+ * Two people using this product do not see each other's leads.
+ */
+export const PERSISTENCE_LIMITS = [
+  "Everything is saved in this browser's local storage. Nothing is sent to a server.",
+  "There is no account system, so no record is owned by or restricted to a named user.",
+  "Clearing site data, using a different browser or using a private window loses the lot.",
+  "Two people cannot collaborate: there is no synchronisation between browsers.",
+  "No file bytes are stored. A submitted document records a claim, not a copy.",
+] as const;
 
 export interface LoadOutcome {
   state: PersistedState | null;

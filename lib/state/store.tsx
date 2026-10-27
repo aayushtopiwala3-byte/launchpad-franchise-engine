@@ -14,6 +14,18 @@ import type { AiCallRecord } from "../ai/client";
 import { CostLedger, DEFAULT_COST_CEILING_USD } from "../ai/cost";
 import { EMPTY_ENRICHMENT, enrichWithAi, type AiEnrichment } from "../ai/enrich";
 import { ACTIVE_MODEL } from "../ai/model";
+import { seedDemoLeads } from "../crm/demo";
+import type { Lead, LeadInteraction, LeadStage, OutreachDraft } from "../crm/types";
+import { DOCUMENT_BY_ID, TASK_BY_ID } from "../onboarding/config";
+import { DEMO_APPLICATION_ID, seedDemoProgress } from "../onboarding/demo";
+import { canActorCompleteTask, emptyProgress } from "../onboarding/journey";
+import type {
+  ActivityEntry,
+  Actor,
+  DocumentRecord,
+  JourneyProgress,
+  TaskRecord,
+} from "../onboarding/types";
 import { runPipeline } from "../engine/pipeline";
 import { parseWorkbook } from "../parse/workbook";
 import { BRAND_DEFAULT_POLICY, POLICY_PRESETS } from "../reference";
@@ -67,6 +79,13 @@ export interface AppState {
   chat: ChatMessage[];
   costLedger: CostLedgerEntry[];
 
+  /** Acquisition prospects. Not decisions — the engine owns every verdict. */
+  leads: Lead[];
+  outreachDrafts: OutreachDraft[];
+  /** Recorded onboarding progress, keyed by Application ID. Statuses are derived from it. */
+  journeyProgress: Record<string, JourneyProgress>;
+  demoSeeded: boolean;
+
   health: HealthState;
   systemLog: SystemLogEntry[];
   /** Set when a re-run threw or broke an invariant and the state was rolled back. */
@@ -97,6 +116,10 @@ const INITIAL: AppState = {
   pendingUpdates: [],
   chat: [],
   costLedger: [],
+  leads: [],
+  outreachDrafts: [],
+  journeyProgress: {},
+  demoSeeded: false,
   health: HEALTHY,
   systemLog: [],
   rollbackBanner: null,
@@ -128,7 +151,31 @@ type Action =
   | { type: "cost"; entry: CostLedgerEntry }
   | { type: "health"; patch: Partial<HealthState> }
   | { type: "log"; entry: SystemLogEntry }
+  | { type: "lead:add"; lead: Lead }
+  | { type: "lead:update"; leadId: string; patch: Partial<Lead> }
+  | { type: "lead:interaction"; leadId: string; interaction: LeadInteraction }
+  | { type: "outreach:save"; draft: OutreachDraft }
+  | { type: "journey:task"; applicationId: string; taskId: string; record: TaskRecord | null; actor: Actor; activity: ActivityEntry }
+  | { type: "journey:document"; applicationId: string; documentId: string; record: DocumentRecord; activity: ActivityEntry }
+  | { type: "journey:siteNotes"; applicationId: string; notes: string; activity: ActivityEntry }
+  | { type: "demo:seed"; leads: Lead[]; progress: JourneyProgress }
+  | { type: "demo:clear" }
   | { type: "reset" };
+
+/** Progress is created on first touch, so a journey never has to be opened to exist. */
+function withProgress(
+  state: AppState,
+  applicationId: string,
+  mutate: (p: JourneyProgress) => JourneyProgress,
+): AppState {
+  const existing =
+    state.journeyProgress[applicationId] ??
+    emptyProgress(applicationId, applicationId === DEMO_APPLICATION_ID);
+  return {
+    ...state,
+    journeyProgress: { ...state.journeyProgress, [applicationId]: mutate(existing) },
+  };
+}
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -208,6 +255,71 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, health: { ...state.health, ...action.patch } };
     case "log":
       return { ...state, systemLog: appendLog(state.systemLog, action.entry) };
+    case "lead:add":
+      return { ...state, leads: [action.lead, ...state.leads] };
+    case "lead:update":
+      return {
+        ...state,
+        leads: state.leads.map((l) =>
+          // isDemo is filtered out of every patch: a sample record stays a sample record.
+          l.leadId === action.leadId ? { ...l, ...action.patch, isDemo: l.isDemo } : l,
+        ),
+      };
+    case "lead:interaction":
+      return {
+        ...state,
+        leads: state.leads.map((l) =>
+          l.leadId === action.leadId
+            ? {
+                ...l,
+                interactions: [...l.interactions, action.interaction],
+                lastInteractionAt: action.interaction.at,
+              }
+            : l,
+        ),
+      };
+    case "outreach:save":
+      return { ...state, outreachDrafts: [action.draft, ...state.outreachDrafts].slice(0, 200) };
+    case "journey:task": {
+      // The last line of defence on who may close what. The owner portal hides Brand tasks,
+      // but hiding a control is not a rule — this is.
+      if (action.record && !canActorCompleteTask(action.actor, action.taskId)) return state;
+      return withProgress(state, action.applicationId, (p) => {
+        const tasks = { ...p.tasks };
+        if (action.record) tasks[action.taskId] = action.record;
+        else delete tasks[action.taskId];
+        return { ...p, tasks, activity: [...p.activity, action.activity] };
+      });
+    }
+    case "journey:document":
+      return withProgress(state, action.applicationId, (p) => ({
+        ...p,
+        documents: { ...p.documents, [action.documentId]: action.record },
+        activity: [...p.activity, action.activity],
+      }));
+    case "journey:siteNotes":
+      return withProgress(state, action.applicationId, (p) => ({
+        ...p,
+        siteNotes: action.notes,
+        activity: [...p.activity, action.activity],
+      }));
+    case "demo:seed":
+      return {
+        ...state,
+        demoSeeded: true,
+        leads: [...state.leads.filter((l) => !l.isDemo), ...action.leads],
+        journeyProgress: { ...state.journeyProgress, [DEMO_APPLICATION_ID]: action.progress },
+      };
+    case "demo:clear": {
+      const progress = { ...state.journeyProgress };
+      delete progress[DEMO_APPLICATION_ID];
+      return {
+        ...state,
+        demoSeeded: true,
+        leads: state.leads.filter((l) => !l.isDemo),
+        journeyProgress: progress,
+      };
+    }
     case "reset":
       return { ...INITIAL, hydrated: true, safeMode: state.safeMode, flags: state.flags };
   }
@@ -233,6 +345,33 @@ export interface StoreValue extends AppState {
   addPendingUpdate: (update: PendingUpdate) => void;
   resolvePendingUpdate: (id: string, accept: boolean) => void;
   setChat: (messages: ChatMessage[]) => void;
+
+  addLead: (lead: Lead) => void;
+  updateLead: (leadId: string, patch: Partial<Lead>) => void;
+  logInteraction: (leadId: string, interaction: LeadInteraction) => void;
+  /** Moves a lead's acquisition stage and records the move in its own history. */
+  setLeadStage: (leadId: string, stage: LeadStage, by: string) => void;
+  linkLeadToApplication: (leadId: string, applicationId: string) => void;
+  saveOutreachDraft: (draft: OutreachDraft) => void;
+  /** Returns false when the actor is not permitted to close that task. */
+  setJourneyTask: (
+    applicationId: string,
+    taskId: string,
+    done: boolean,
+    actor: Actor,
+    byName: string,
+  ) => boolean;
+  setJourneyDocument: (
+    applicationId: string,
+    documentId: string,
+    record: DocumentRecord,
+    actor: Actor,
+    byName: string,
+  ) => void;
+  setSiteNotes: (applicationId: string, notes: string, byName: string) => void;
+  clearDemoRecords: () => void;
+  restoreDemoRecords: () => void;
+
   /** The one session budget. Shared so chat and enrichment spend against the same cap. */
   ledger: CostLedger;
   recordCost: (entry: CostLedgerEntry) => void;
@@ -299,6 +438,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       overrides: stored?.overrides ?? [],
       pendingUpdates: stored?.pendingUpdates ?? [],
       includeExampleRow: stored?.includeExampleRow ?? false,
+      outreachDrafts: stored?.outreachDrafts ?? [],
+      demoSeeded: stored?.demoSeeded ?? false,
       health: outcome.corruptPayload
         ? {
             ...HEALTHY,
@@ -364,6 +505,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    // The illustrative leads and the sample partner's journey are added once, on a browser
+    // that has never held them. After that the stored copy wins, so editing a sample lead
+    // sticks and clearing them stays cleared. In safe mode they are added fresh every time,
+    // because safe mode saves nothing and an empty workspace would demonstrate nothing.
+    const seedDate = stored?.asOfDate ?? today();
+    if (stored?.demoSeeded) {
+      patch.leads = stored.leads ?? [];
+      patch.journeyProgress = stored.journeyProgress ?? {};
+    } else {
+      patch.demoSeeded = true;
+      patch.leads = [...(stored?.leads ?? []), ...seedDemoLeads(seedDate)];
+      patch.journeyProgress = {
+        ...(stored?.journeyProgress ?? {}),
+        [DEMO_APPLICATION_ID]: seedDemoProgress(seedDate),
+      };
+    }
+
     dispatch({ type: "hydrate", patch });
   }, []);
 
@@ -386,6 +544,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // fill storage and take the uploaded data down with it. Ids are numbered from the
       // last version, so dropping the oldest never makes two versions share one.
       versions: state.versions.slice(-STORED_VERSIONS),
+      leads: state.leads,
+      outreachDrafts: state.outreachDrafts,
+      journeyProgress: state.journeyProgress,
+      demoSeeded: state.demoSeeded,
     };
     const { ok, error } = save(payload);
     const detail = ok ? "Saved in this browser." : (error ?? "Could not save.");
@@ -406,6 +568,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     state.pendingUpdates,
     state.includeExampleRow,
     state.versions,
+    state.leads,
+    state.outreachDrafts,
+    state.journeyProgress,
+    state.demoSeeded,
   ]);
 
   /**
@@ -716,6 +882,92 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addPendingUpdate: (update) => dispatch({ type: "pendingUpdate", update }),
       resolvePendingUpdate,
       setChat: (messages) => dispatch({ type: "chat", messages }),
+
+      addLead: (lead) => dispatch({ type: "lead:add", lead }),
+      updateLead: (leadId, patch) => dispatch({ type: "lead:update", leadId, patch }),
+      logInteraction: (leadId, interaction) =>
+        dispatch({ type: "lead:interaction", leadId, interaction }),
+      setLeadStage: (leadId, stage, by) => {
+        const lead = stateRef.current.leads.find((l) => l.leadId === leadId);
+        if (!lead || lead.stage === stage) return;
+        const at = new Date().toISOString();
+        dispatch({
+          type: "lead:interaction",
+          leadId,
+          interaction: {
+            id: `${leadId}-S${lead.interactions.length + 1}`,
+            at,
+            kind: "stage-change",
+            summary: `Stage moved from ${lead.stage} to ${stage}.`,
+            by,
+          },
+        });
+        dispatch({ type: "lead:update", leadId, patch: { stage } });
+      },
+      linkLeadToApplication: (leadId, applicationId) =>
+        dispatch({
+          type: "lead:update",
+          leadId,
+          patch: { linkedApplicationId: applicationId, stage: "Converted" },
+        }),
+      saveOutreachDraft: (draft) => dispatch({ type: "outreach:save", draft }),
+      setJourneyTask: (applicationId, taskId, done, actor, byName) => {
+        if (done && !canActorCompleteTask(actor, taskId)) return false;
+        const at = new Date().toISOString();
+        dispatch({
+          type: "journey:task",
+          applicationId,
+          taskId,
+          actor,
+          record: done ? { at, by: actor, byName } : null,
+          activity: {
+            id: `${applicationId}-${taskId}-${at}`,
+            at,
+            by: actor,
+            byName,
+            // The log is read by people, so it names the step rather than its internal id.
+            summary: done
+              ? `Marked "${TASK_BY_ID.get(taskId)?.label ?? taskId}" complete.`
+              : `Reopened "${TASK_BY_ID.get(taskId)?.label ?? taskId}".`,
+          },
+        });
+        return true;
+      },
+      setJourneyDocument: (applicationId, documentId, record, actor, byName) =>
+        dispatch({
+          type: "journey:document",
+          applicationId,
+          documentId,
+          record,
+          activity: {
+            id: `${applicationId}-${documentId}-${record.at}`,
+            at: record.at,
+            by: actor,
+            byName,
+            summary: `${DOCUMENT_BY_ID.get(documentId)?.label ?? documentId} is now "${record.state}".`,
+          },
+        }),
+      setSiteNotes: (applicationId, notes, byName) => {
+        const at = new Date().toISOString();
+        dispatch({
+          type: "journey:siteNotes",
+          applicationId,
+          notes,
+          activity: {
+            id: `${applicationId}-site-${at}`,
+            at,
+            by: "Partner",
+            byName,
+            summary: "Site details updated.",
+          },
+        });
+      },
+      clearDemoRecords: () => dispatch({ type: "demo:clear" }),
+      restoreDemoRecords: () => {
+        const date = stateRef.current.asOfDate ?? today();
+        dispatch({ type: "demo:seed", leads: seedDemoLeads(date), progress: seedDemoProgress(date) });
+      },
+
       ledger: ledgerRef.current,
       recordCost: (entry) => dispatch({ type: "cost", entry }),
       setHealth: (patch) => dispatch({ type: "health", patch }),

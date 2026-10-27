@@ -1,5 +1,7 @@
 // Domain types for Launchpad. Everything the engine touches is declared here.
 
+import type { AiCallType } from "./ai/types";
+
 export type Tier = "Tier 1" | "Tier 2" | "Tier 3";
 export type Priority = "High" | "Medium" | "Low";
 export type SpaceAvailable = "Owned" | "Rented" | "Not yet identified";
@@ -349,7 +351,7 @@ export interface Override {
 }
 
 export interface CostLedgerEntry {
-  callType: "classify" | "contradictions" | "chat" | "polish";
+  callType: AiCallType;
   model: string;
   promptTokens: number;
   completionTokens: number;

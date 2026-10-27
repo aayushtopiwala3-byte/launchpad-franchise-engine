@@ -13,6 +13,8 @@ const NAV = [
   { href: "/dashboard", label: "Command Centre" },
   { href: "/applicants", label: "Applicants" },
   { href: "/territories", label: "Territories" },
+  { href: "/acquisition", label: "Partner Acquisition" },
+  { href: "/onboarding", label: "Onboarding & Launch" },
   { href: "/chat", label: "Ask & Update" },
   { href: "/quality", label: "Data quality" },
   { href: "/timeline", label: "Timeline" },
@@ -30,8 +32,8 @@ function NavLinks({ pathname }: { pathname: string | null }) {
             href={item.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "shrink-0 rounded-md px-2.5 py-1.5 text-sm whitespace-nowrap transition-colors",
-              active ? "bg-stone-900 text-white" : "text-muted hover:bg-stone-100",
+              "shrink-0 rounded-xl px-2.5 py-1.5 text-sm font-semibold whitespace-nowrap transition-colors duration-150",
+              active ? "bg-brand-soft text-brand" : "text-muted hover:bg-stone-100 hover:text-foreground",
             )}
           >
             {item.label}
@@ -56,9 +58,17 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="flex min-h-full flex-col">
       <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
-          <Link href="/" className="flex items-baseline gap-2">
-            <span className="text-sm font-semibold tracking-tight">Launchpad</span>
-            <span className="hidden text-xs text-muted sm:inline">{policy.brandName}</span>
+          <Link href="/" className="flex items-center gap-2">
+            <span
+              className="grid size-7 shrink-0 place-items-center rounded-[9px] bg-brand text-xs font-bold text-white shadow-[0_6px_14px_#7c3aed47]"
+              aria-hidden
+            >
+              L
+            </span>
+            <span className="flex flex-col leading-tight">
+              <span className="text-sm font-semibold tracking-tight">Launchpad</span>
+              <span className="hidden text-xs text-muted sm:inline">{policy.brandName}</span>
+            </span>
           </Link>
           <div className="ml-auto order-last w-full sm:order-none sm:ml-0 sm:w-auto sm:flex-1">
             <Suspense fallback={<NavLinks pathname={null} />}>
@@ -132,7 +142,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         ) : null}
       </div>
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-4">{children}</main>
+      <main className="anim-fade mx-auto w-full max-w-7xl flex-1 px-4 py-4">{children}</main>
 
       <footer className="no-print border-t border-line">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-xs text-muted">

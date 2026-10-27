@@ -4,21 +4,57 @@
    the status colours they are asked to read, so there is no dark mode. */
 :root {
   color-scheme: light;
-  --background: #fafaf9;
+
+  --background: #f4f3fb;
   --surface: #ffffff;
-  --foreground: #1c1917;
-  --muted: #57534e;
-  --line: #e7e5e4;
+  --surface-2: #f8f7fd;
+  --foreground: #17151f;
+  --ink-2: #4b4858;
+  --muted: #55526a;
+  --line: #ebe9f3;
+  --line-2: #dcd9e8;
+
+  --brand: #7c3aed;
+  --brand-2: #6d28d9;
+  --brand-soft: #f1eafe;
+  --lime: #c6f24e;
+  --lime-ink: #2a3a00;
+  --night: #0c0b12;
+  --night-line: rgb(255 255 255 / 0.1);
+
+  --shadow: 0 1px 2px #17151f08, 0 8px 24px #4c34a00f;
+  --shadow-lg: 0 2px 6px #17151f0a, 0 18px 40px #4c34a024;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-night: var(--night);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* The app was built on Tailwind's warm `stone` ramp. Re-pointing the ramp at a
+     cool, lavender-tinted neutral retints every existing surface at once, rather
+     than leaving warm greys stranded on a cool canvas. */
+  --color-stone-50: #f8f7fd;
+  --color-stone-100: #f1eff8;
+  --color-stone-200: #e7e4f1;
+  --color-stone-300: #dcd9e8;
+  --color-stone-400: #a9a2c2;
+  --color-stone-500: #8d8a9b;
+  --color-stone-600: #6b6879;
+  --color-stone-700: #4b4858;
+  --color-stone-800: #2a2736;
+  --color-stone-900: #17151f;
+  --color-stone-950: #0c0b12;
 }
 
 body {
@@ -30,8 +66,184 @@ body {
 
 /* Keyboard focus must stay visible: the judge test plan includes tabbing the app. */
 :focus-visible {
-  outline: 2px solid #0284c7;
+  outline: 2px solid var(--brand);
   outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   Motion.
+
+   Every animation below is an entrance or a hover. None of them gates content:
+   each uses `both` fill from an opacity-0 start only for the duration of its own
+   run, and the reduced-motion block at the end removes them entirely, leaving the
+   finished state. Nothing a reader needs can be stuck mid-animation.
+   --------------------------------------------------------------------------- */
+
+@keyframes lp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lp-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lp-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes lp-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes lp-ringfill {
+  from {
+    stroke-dashoffset: var(--c);
+  }
+}
+
+@keyframes lp-blob {
+  0% {
+    border-radius: 50%;
+    transform: translate(0) rotate(0) scale(1);
+  }
+  25% {
+    border-radius: 60% 40% 55% 45%;
+    transform: translate(-50px, 26px) rotate(60deg) scale(1.15, 0.88);
+  }
+  50% {
+    border-radius: 40% 60% 35% 65%;
+    transform: translate(34px, 52px) rotate(150deg) scale(0.88, 1.18);
+  }
+  75% {
+    border-radius: 55% 45% 65% 35%;
+    transform: translate(56px, -24px) rotate(255deg) scale(1.16, 0.92);
+  }
+  100% {
+    border-radius: 50%;
+    transform: translate(0) rotate(360deg) scale(1);
+  }
+}
+
+@keyframes lp-barpulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scaleY(0.4);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+.anim-rise {
+  animation: lp-rise 0.55s var(--ease) both;
+}
+.anim-pop {
+  animation: lp-pop 0.4s var(--ease) both;
+}
+.anim-fade {
+  animation: lp-fade 0.6s var(--ease) both;
+}
+.anim-grow-x {
+  transform-origin: left;
+  animation: lp-grow-x 0.8s var(--ease) both;
+}
+
+/* Children enter one after another. Capped at 12 so a long list does not spend
+   two seconds arriving — past the cap everything lands together. */
+.stagger > * {
+  animation: lp-rise 0.5s var(--ease) both;
+}
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 40ms; }
+.stagger > *:nth-child(3) { animation-delay: 80ms; }
+.stagger > *:nth-child(4) { animation-delay: 120ms; }
+.stagger > *:nth-child(5) { animation-delay: 160ms; }
+.stagger > *:nth-child(6) { animation-delay: 200ms; }
+.stagger > *:nth-child(7) { animation-delay: 240ms; }
+.stagger > *:nth-child(8) { animation-delay: 280ms; }
+.stagger > *:nth-child(9) { animation-delay: 320ms; }
+.stagger > *:nth-child(10) { animation-delay: 360ms; }
+.stagger > *:nth-child(11) { animation-delay: 400ms; }
+.stagger > *:nth-child(n + 12) { animation-delay: 440ms; }
+
+.lift {
+  transition:
+    transform 0.2s var(--ease),
+    box-shadow 0.2s var(--ease),
+    border-color 0.2s var(--ease);
+}
+.lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--line-2);
+}
+
+.shadow-card {
+  box-shadow: var(--shadow);
+}
+.shadow-card-lg {
+  box-shadow: var(--shadow-lg);
+}
+
+.blob {
+  position: absolute;
+  filter: blur(42px);
+  opacity: 0.55;
+  pointer-events: none;
+  animation: lp-blob 18s ease-in-out infinite;
+}
+
+.bar-pulse > span {
+  transform-origin: bottom;
+  animation: lp-barpulse 1.2s ease-in-out infinite;
+}
+.bar-pulse > span:nth-child(2) { animation-duration: 0.9s; }
+.bar-pulse > span:nth-child(3) { animation-duration: 1.45s; }
+
+/* Width changes are driven by state (a document accepted, a milestone closed), so
+   they animate rather than jump — the movement is what tells you something moved. */
+.bar-fill {
+  transition: width 0.55s var(--ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  .blob {
+    animation: none;
+  }
 }
 
 @media print {
@@ -40,5 +252,11 @@ body {
   }
   body {
     background: #ffffff;
+  }
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
   }
 }

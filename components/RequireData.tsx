@@ -1,6 +1,7 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode } from "react";
+import { useFirstPaint } from "../lib/state/firstPaint";
 import { useStore } from "../lib/state/store";
 import type { PipelineResult } from "../lib/types";
 import { DataLoader } from "./DataLoader";
@@ -17,8 +18,7 @@ export function RequireData({ children }: { children: (result: PipelineResult) =
   // after the store has already restored. Painting the restored result on that first pass
   // would contradict the placeholder the server sent and fail hydration, so the first paint
   // here is always the placeholder and the data arrives on the pass after it.
-  const [painted, setPainted] = useState(false);
-  useEffect(() => setPainted(true), []);
+  const painted = useFirstPaint();
 
   if (!painted || !hydrated) {
     return (
